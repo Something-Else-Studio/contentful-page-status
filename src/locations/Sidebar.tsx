@@ -195,16 +195,21 @@ const Sidebar = () => {
       <Note>
         Publishing
         <List>
-          <ListItem>Total: {publishStatus.total}</ListItem>
-          <ListItem>Published: {publishStatus.published}</ListItem>
-          <ListItem>Errors: {publishStatus.errors}</ListItem>
-          {publishStatus.errored.map((s) => (
-            <ListItem key={s.id}>
-              <a href={getEditorEntry(s)} target="_blank" rel="noreferrer">
-                {s.type} {s.id}
-              </a>
-            </ListItem>
-          ))}
+          <ListItem>
+            Published: {publishStatus.published}/{publishStatus.total}
+          </ListItem>
+          {publishStatus.errors > 0 && (
+            <>
+              <ListItem>Errors: {publishStatus.errors}</ListItem>
+              {publishStatus.errored.map((s) => (
+                <ListItem key={s.id}>
+                  <a href={getEditorEntry(s)} target="_blank" rel="noreferrer">
+                    {s.type} {s.id}
+                  </a>
+                </ListItem>
+              ))}
+            </>
+          )}
         </List>
       </Note>
     );
@@ -218,35 +223,52 @@ const Sidebar = () => {
       information.errorCount === 0 &&
       information.draftEntryCount +
         information.updatedEntryCount +
-        information.assetCount +
-        information.draftAssetCount >
+        information.draftAssetCount +
+        information.updatedAssetCount >
         0;
 
     return (
       <>
         {publishNeeded && (
-          <Button variant="primary" onClick={handlePublish}>
-            Publish outdated
-          </Button>
+          <>
+            <Button variant="primary" onClick={handlePublish}>
+              Publish outdated
+            </Button>
+
+            <Note>
+              <List>
+                {information.errorCount > 0 && (
+                  <ListItem>Error count: {information.errorCount}</ListItem>
+                )}
+                {information.draftEntryCount > 0 && (
+                  <ListItem>
+                    Draft entries: {information.draftEntryCount}/
+                    {information.entryCount}
+                  </ListItem>
+                )}
+                {information.updatedEntryCount > 0 && (
+                  <ListItem>
+                    Updated entries: {information.updatedEntryCount}/
+                    {information.entryCount}
+                  </ListItem>
+                )}
+                {information.draftAssetCount > 0 && (
+                  <ListItem>
+                    Draft asset count: {information.draftAssetCount}/
+                    {information.assetCount}
+                  </ListItem>
+                )}
+                {information.updatedAssetCount > 0 && (
+                  <ListItem>
+                    Updated asset count: {information.updatedAssetCount}/
+                    {information.assetCount}
+                  </ListItem>
+                )}
+              </List>
+            </Note>
+          </>
         )}
-        <Note>
-          Details for component
-          <List>
-            <ListItem>Error count: {information.errorCount}</ListItem>
-            <ListItem>Entry count: {information.entryCount}</ListItem>
-            <ListItem>Draft entries: {information.draftEntryCount}</ListItem>
-            <ListItem>
-              Updated entries: {information.updatedEntryCount}
-            </ListItem>
-            <ListItem>Asset count: {information.assetCount}</ListItem>
-            <ListItem>
-              Draft asset count: {information.draftAssetCount}
-            </ListItem>
-            <ListItem>
-              Updated asset count: {information.updatedAssetCount}
-            </ListItem>
-          </List>
-        </Note>
+        {!publishNeeded && <Paragraph>All up to date</Paragraph>}
       </>
     );
   }
