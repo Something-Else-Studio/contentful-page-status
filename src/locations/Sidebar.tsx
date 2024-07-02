@@ -18,12 +18,14 @@ import {
   EntryProps,
   KeyValueMap,
   isDraft,
+  isPublished,
   isUpdated,
 } from "contentful-management";
 
 type Status = "Idle" | "Reading" | "Complete" | "Error" | "Publishing";
 
 interface IReferenceInformation {
+  published: boolean;
   errors: EntryReferenceError[] | undefined;
   errorCount: number;
   entryCount: number;
@@ -41,6 +43,7 @@ interface IReferenceInformation {
 function buildReferenceInformation(
   references: EntryReferenceProps
 ): IReferenceInformation {
+  const published = isPublished(references.items[0]);
   const errors = references.errors;
   const errorCount = errors?.length ?? 0;
   const entries = references.includes?.Entry;
@@ -57,6 +60,7 @@ function buildReferenceInformation(
   const updatedAssetCount = updatedAssets.length;
 
   return {
+    published,
     errors,
     errorCount,
     entryCount,
@@ -128,6 +132,9 @@ async function doPublish(
     }
     setStatus({ total, published, errors, errored });
   }
+  if (errors === 0) {
+    await sdk.entry.publish();
+  }
   return errors === 0;
 }
 
@@ -180,6 +187,10 @@ const Sidebar = () => {
       });
   }, [information, retrieveInformation, sdk]);
 
+  const handleRefresh = useCallback(() => {
+    retrieveInformation();
+  }, [retrieveInformation]);
+
   /*
      To use the cma, inject it as follows.
      If it is not needed, you can remove the next line.
@@ -221,11 +232,13 @@ const Sidebar = () => {
   if (information) {
     const publishNeeded =
       information.errorCount === 0 &&
-      information.draftEntryCount +
-        information.updatedEntryCount +
-        information.draftAssetCount +
-        information.updatedAssetCount >
-        0;
+      (!information.published ||
+        (information.errorCount === 0 &&
+          information.draftEntryCount +
+            information.updatedEntryCount +
+            information.draftAssetCount +
+            information.updatedAssetCount >
+            0));
 
     return (
       <>
@@ -234,8 +247,10 @@ const Sidebar = () => {
             <Button variant="primary" onClick={handlePublish}>
               Publish outdated
             </Button>
+            <Button onClick={handleRefresh}>Refresh</Button>
 
             <Note>
+              {!information.published && <List>This entry</List>}
               <List>
                 {information.errorCount > 0 && (
                   <ListItem>Error count: {information.errorCount}</ListItem>
@@ -268,11 +283,21 @@ const Sidebar = () => {
             </Note>
           </>
         )}
-        {!publishNeeded && <Paragraph>All up to date</Paragraph>}
+        {!publishNeeded && (
+          <>
+            <Paragraph>All up to date</Paragraph>
+            <Button onClick={handleRefresh}>Refresh</Button>
+          </>
+        )}
       </>
     );
   }
-  return <Paragraph>Hmm - something didn't work</Paragraph>;
+  return (
+    <>
+      <Paragraph>Hmm - something didn't work</Paragraph>
+      <Button onClick={handleRefresh}>Refresh</Button>
+    </>
+  );
 };
 
 export default Sidebar;
