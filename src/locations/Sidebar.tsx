@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Button,
+  Flex,
   List,
   ListItem,
   Note,
   Paragraph,
+  Text,
+  Stack,
+  Box,
 } from "@contentful/f36-components";
 import { SidebarAppSDK } from "@contentful/app-sdk";
 import { useSDK } from "@contentful/react-apps-toolkit";
@@ -156,8 +160,6 @@ const Sidebar = () => {
           return;
         }
         setStatus("Complete");
-        // console.log("References", references);
-        // console.log(JSON.stringify(references, undefined, 2));
         const information = buildReferenceInformation(references);
         setInformation(information);
         return;
@@ -191,43 +193,53 @@ const Sidebar = () => {
     retrieveInformation();
   }, [retrieveInformation]);
 
-  /*
-     To use the cma, inject it as follows.
-     If it is not needed, you can remove the next line.
-  */
-  // const cma = useCMA();
-
   if (status === "Idle" || status === "Reading") {
-    return <Paragraph>Loading ...</Paragraph>;
+    return (
+      <Box padding="spacingM">
+        <Paragraph>Loading ...</Paragraph>
+      </Box>
+    );
   }
 
   if (status === "Publishing" && publishStatus) {
     return (
-      <Note>
-        Publishing
-        <List>
-          <ListItem>
-            Published: {publishStatus.published}/{publishStatus.total}
-          </ListItem>
-          {publishStatus.errors > 0 && (
-            <>
-              <ListItem>Errors: {publishStatus.errors}</ListItem>
-              {publishStatus.errored.map((s) => (
-                <ListItem key={s.id}>
-                  <a href={getEditorEntry(s)} target="_blank" rel="noreferrer">
-                    {s.type} {s.id}
-                  </a>
-                </ListItem>
-              ))}
-            </>
-          )}
-        </List>
-      </Note>
+      <Box padding="spacingM">
+        <Note variant="primary">
+          <Stack spacing="spacingS">
+            <Text fontWeight="fontWeightMedium">Publishing</Text>
+            <List>
+              <ListItem>
+                Published: {publishStatus.published}/{publishStatus.total}
+              </ListItem>
+              {publishStatus.errors > 0 && (
+                <>
+                  <ListItem>Errors: {publishStatus.errors}</ListItem>
+                  {publishStatus.errored.map((s) => (
+                    <ListItem key={s.id}>
+                      <a
+                        href={getEditorEntry(s)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {s.type} {s.id}
+                      </a>
+                    </ListItem>
+                  ))}
+                </>
+              )}
+            </List>
+          </Stack>
+        </Note>
+      </Box>
     );
   }
 
   if (error) {
-    return <Paragraph>Error processing: {error}</Paragraph>;
+    return (
+      <Box padding="spacingM">
+        <Note variant="negative">Error processing: {error}</Note>
+      </Box>
+    );
   }
   if (information) {
     const publishNeeded =
@@ -241,62 +253,82 @@ const Sidebar = () => {
             0));
 
     return (
-      <>
-        {publishNeeded && (
-          <>
-            <Button variant="primary" onClick={handlePublish}>
-              Publish outdated
-            </Button>
-            <Button onClick={handleRefresh}>Refresh</Button>
+      <Box>
+        {publishNeeded ? (
+          <Stack
+            spacing="spacingM"
+            flexDirection="column"
+            alignItems="flex-start"
+          >
+            <Flex gap="spacingS">
+              <Button variant="primary" onClick={handlePublish}>
+                Publish outdated
+              </Button>
+              <Button onClick={handleRefresh} variant="secondary">
+                Refresh
+              </Button>
+            </Flex>
 
-            <Note>
-              {!information.published && <List>This entry</List>}
-              <List>
+            <Stack
+              spacing="spacingS"
+              flexDirection="column"
+              alignItems="flex-start"
+            >
+              <Stack
+                spacing="none"
+                flexDirection="column"
+                alignItems="flex-start"
+              >
                 {information.errorCount > 0 && (
-                  <ListItem>Error count: {information.errorCount}</ListItem>
+                  <Text fontColor="red900">
+                    Error count: {information.errorCount}
+                  </Text>
                 )}
-                {information.draftEntryCount > 0 && (
-                  <ListItem>
-                    Draft entries: {information.draftEntryCount}/
-                    {information.entryCount}
-                  </ListItem>
-                )}
-                {information.updatedEntryCount > 0 && (
-                  <ListItem>
-                    Updated entries: {information.updatedEntryCount}/
-                    {information.entryCount}
-                  </ListItem>
-                )}
-                {information.draftAssetCount > 0 && (
-                  <ListItem>
-                    Draft asset count: {information.draftAssetCount}/
-                    {information.assetCount}
-                  </ListItem>
-                )}
-                {information.updatedAssetCount > 0 && (
-                  <ListItem>
-                    Updated asset count: {information.updatedAssetCount}/
-                    {information.assetCount}
-                  </ListItem>
-                )}
-              </List>
-            </Note>
-          </>
+                <Text>
+                  Draft entries: {information.draftEntryCount}/
+                  {information.entryCount}
+                </Text>
+                <Text>
+                  Updated entries: {information.updatedEntryCount}/
+                  {information.entryCount}
+                </Text>
+                <Text>
+                  Draft assets: {information.draftAssetCount}/
+                  {information.assetCount}
+                </Text>
+                <Text>
+                  Updated assets: {information.updatedAssetCount}/
+                  {information.assetCount}
+                </Text>
+              </Stack>
+            </Stack>
+          </Stack>
+        ) : (
+          <Box padding="spacingM">
+            <Stack
+              spacing="spacingS"
+              flexDirection="column"
+              alignItems="flex-start"
+            >
+              <Note variant="positive">All up to date</Note>
+              <Button onClick={handleRefresh} variant="secondary">
+                Refresh
+              </Button>
+            </Stack>
+          </Box>
         )}
-        {!publishNeeded && (
-          <>
-            <Paragraph>All up to date</Paragraph>
-            <Button onClick={handleRefresh}>Refresh</Button>
-          </>
-        )}
-      </>
+      </Box>
     );
   }
   return (
-    <>
-      <Paragraph>Hmm - something didn't work</Paragraph>
-      <Button onClick={handleRefresh}>Refresh</Button>
-    </>
+    <Box padding="spacingM">
+      <Stack spacing="spacingS" flexDirection="column" alignItems="flex-start">
+        <Note variant="warning">Hmm - something didn't work</Note>
+        <Button onClick={handleRefresh} variant="secondary">
+          Refresh
+        </Button>
+      </Stack>
+    </Box>
   );
 };
 
