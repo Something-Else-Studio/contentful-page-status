@@ -18,4 +18,4 @@ jobs:
           organization-id: ${{ secrets.CONTENTFUL_ORG_ID }}
           app-definition-id: ${{ secrets.CONTENTFUL_APP_DEF_ID }}
           access-token: ${{ secrets.CONTENTFUL_ACCESS_TOKEN }}
-          folder: build
+          folder: dist
