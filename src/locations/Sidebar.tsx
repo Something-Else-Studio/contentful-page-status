@@ -10,7 +10,7 @@ import {
   Stack,
   Box,
 } from "@contentful/f36-components";
-import { SidebarAppSDK } from "@contentful/app-sdk";
+import { EntryAPI, EntrySys, SidebarAppSDK } from "@contentful/app-sdk";
 import { useSDK } from "@contentful/react-apps-toolkit";
 import {
   EntryReferenceError,
@@ -45,8 +45,12 @@ interface IReferenceInformation {
 }
 
 function buildReferenceInformation(
+  entrySys: EntrySys,
   references: EntryReferenceProps
 ): IReferenceInformation {
+  console.log("etnrySys", entrySys);
+  console.log("references", references.includes?.Entry?.[0]);
+  const publishedDate = entrySys.publishedAt;
   const published = isPublished(references.items[0]);
   const errors = references.errors;
   const errorCount = errors?.length ?? 0;
@@ -62,9 +66,21 @@ function buildReferenceInformation(
   const draftAssetCount = draftAssets.length;
   const updatedAssets = assets?.filter(isUpdated) ?? [];
   const updatedAssetCount = updatedAssets.length;
+  const assetsPublishedAfter = assets?.filter(
+    (a) =>
+      publishedDate && a.sys.publishedAt && a.sys.publishedAt > publishedDate
+  );
+  const entriesPublishedAfter = entries?.filter(
+    (e) =>
+      publishedDate && e.sys.publishedAt && e.sys.publishedAt > publishedDate
+  );
+  const isOutOfDate =
+    (assetsPublishedAfter?.length ?? 0) > 0 ||
+    (entriesPublishedAfter?.length ?? 0) > 0;
 
+  console.log({ published, assetsPublishedAfter, entriesPublishedAfter });
   return {
-    published,
+    published: published && !isOutOfDate,
     errors,
     errorCount,
     entryCount,
@@ -151,8 +167,9 @@ const Sidebar = () => {
 
   const retrieveInformation = useCallback(() => {
     setStatus("Reading");
+    const entrySys = sdk.entry.getSys();
     sdk.cma.entry
-      .references({ entryId: sdk.entry.getSys().id })
+      .references({ entryId: entrySys.id })
       .then((references) => {
         if (!references) {
           setStatus("Error");
@@ -160,7 +177,7 @@ const Sidebar = () => {
           return;
         }
         setStatus("Complete");
-        const information = buildReferenceInformation(references);
+        const information = buildReferenceInformation(entrySys, references);
         setInformation(information);
         return;
       })
