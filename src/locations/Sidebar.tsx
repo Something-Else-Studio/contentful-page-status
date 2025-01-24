@@ -50,8 +50,9 @@ function buildReferenceInformation(
 ): IReferenceInformation {
   console.log("etnrySys", entrySys);
   console.log("references", references.includes?.Entry?.[0]);
+  const parent = references.items[0];
   const publishedDate = entrySys.publishedAt;
-  const published = isPublished(references.items[0]);
+  const published = isPublished(parent) && !isUpdated(parent);
   const errors = references.errors;
   const errorCount = errors?.length ?? 0;
   const entries = references.includes?.Entry;
