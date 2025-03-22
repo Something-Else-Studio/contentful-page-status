@@ -37,6 +37,7 @@ const EXCLUDED_CONTENT_TYPES = [
   "tag",
   "template",
   "customType",
+  "navigation",
 ];
 
 interface IReferenceInformation {
@@ -68,7 +69,7 @@ interface IAllReferences {
   processedEntryIds: Set<string>;
 }
 
-// Function to iteratively fetch references
+// Function to iteratively fetch references with improved deduplication
 async function fetchReferencesIteratively(
   sdk: SidebarAppSDK,
   entryId: string,
@@ -87,6 +88,10 @@ async function fetchReferencesIteratively(
 
   // Set to track entries that have been added to the queue
   const entriesQueued = new Set<string>([entryId]);
+
+  // Sets to track unique entry and asset IDs already added to our collections
+  const trackedEntryIds = new Set<string>();
+  const trackedAssetIds = new Set<string>();
 
   // Counters for progress
   let processed = 0;
@@ -129,9 +134,11 @@ async function fetchReferencesIteratively(
       // Process assets
       if (references.includes?.Asset) {
         for (const asset of references.includes.Asset) {
-          // Check if we already have this asset
-          if (!allReferences.assets.some((a) => a.sys.id === asset.sys.id)) {
+          const assetId = asset.sys.id;
+          // Check if we already have this asset using the Set for O(1) lookup
+          if (!trackedAssetIds.has(assetId)) {
             allReferences.assets.push(asset);
+            trackedAssetIds.add(assetId);
           }
         }
       }
@@ -139,20 +146,23 @@ async function fetchReferencesIteratively(
       // Process entries
       const entries = references.includes?.Entry || [];
 
-      // Add all entries to our collection (if not already there)
+      // Add entries to our collection (if not already there)
       for (const entry of entries) {
-        if (!allReferences.entries.some((e) => e.sys.id === entry.sys.id)) {
+        const entryId = entry.sys.id;
+        // Use the Set for O(1) lookup instead of array.some() which is O(n)
+        if (!trackedEntryIds.has(entryId)) {
           allReferences.entries.push(entry);
+          trackedEntryIds.add(entryId);
         }
 
         // Queue up this entry for processing if it's not excluded and not already queued
         const contentType = entry.sys.contentType.sys.id;
         if (
           !EXCLUDED_CONTENT_TYPES.includes(contentType) &&
-          !entriesQueued.has(entry.sys.id)
+          !entriesQueued.has(entryId)
         ) {
-          entriesToProcess.push(entry.sys.id);
-          entriesQueued.add(entry.sys.id);
+          entriesToProcess.push(entryId);
+          entriesQueued.add(entryId);
           total++; // Increment total count for progress tracking
 
           // Update progress
@@ -186,7 +196,6 @@ async function fetchReferencesIteratively(
 
   return allReferences;
 }
-
 function buildReferenceInformation(
   entrySys: EntrySys,
   allReferences: IAllReferences
