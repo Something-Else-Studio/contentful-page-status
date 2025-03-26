@@ -705,11 +705,13 @@ const Sidebar = () => {
               </Stack>
             ) : (
               <>
-                <Text>
-                  {publishNeedCount} item
-                  {`${publishNeedCount === 1 ? "" : "s"}`} need
-                  {`${publishNeedCount === 1 ? "s" : ""}`} publishing
-                </Text>
+                {publishNeedCount > 0 && (
+                  <Text>
+                    {publishNeedCount} item
+                    {`${publishNeedCount === 1 ? "" : "s"}`} need
+                    {`${publishNeedCount === 1 ? "s" : ""}`} publishing
+                  </Text>
+                )}
                 <Stack spacing="spacingS">
                   <Button variant="primary" onClick={handlePublish}>
                     Publish Now
