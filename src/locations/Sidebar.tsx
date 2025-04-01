@@ -318,6 +318,12 @@ async function doPublish(
 
     try {
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      console.log(
+        "Schedule for",
+        scheduleDate.toISOString(),
+        "in",
+        userTimezone
+      );
       // Create a scheduled action for publishing with the correct environment structure
       const scheduledAction = await sdk.cma.scheduledActions.create(
         { spaceId },
