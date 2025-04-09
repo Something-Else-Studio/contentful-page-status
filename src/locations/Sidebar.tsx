@@ -69,6 +69,9 @@ interface IAllReferences {
   processedEntryIds: Set<string>;
 }
 
+//const debug = console.log;
+const debug = (...args: any[]) => {};
+
 // Function to iteratively fetch references with improved deduplication
 async function fetchReferencesIteratively(
   sdk: SidebarAppSDK,
@@ -126,6 +129,8 @@ async function fetchReferencesIteratively(
         continue;
       }
 
+      debug("references", references);
+
       // Add any errors
       if (references.errors) {
         allReferences.errors.push(...references.errors);
@@ -134,6 +139,11 @@ async function fetchReferencesIteratively(
       // Process assets
       if (references.includes?.Asset) {
         for (const asset of references.includes.Asset) {
+          debug(
+            `Looking at asset ${asset.sys.id}: ${
+              asset.fields.title["en-US"]
+            } ${isPublished(asset)}`
+          );
           const assetId = asset.sys.id;
           // Check if we already have this asset using the Set for O(1) lookup
           if (!trackedAssetIds.has(assetId)) {
@@ -148,6 +158,11 @@ async function fetchReferencesIteratively(
 
       // Add entries to our collection (if not already there)
       for (const entry of entries) {
+        debug(
+          `Looking at entry ${entry.sys.id}: ${entry.sys.contentType.sys.id} ${
+            Object.entries(entry.fields)[0][1]["en-US"]
+          } ${isPublished(entry)}`
+        );
         const entryId = entry.sys.id;
         // Use the Set for O(1) lookup instead of array.some() which is O(n)
         if (!trackedEntryIds.has(entryId)) {
@@ -232,7 +247,7 @@ function buildReferenceInformation(
     (assetsPublishedAfter?.length ?? 0) > 0 ||
     (entriesPublishedAfter?.length ?? 0) > 0;
 
-  console.log({ published, assetsPublishedAfter, entriesPublishedAfter });
+  debug({ published, assetsPublishedAfter, entriesPublishedAfter });
   return {
     published: published && !isOutOfDate,
     errors,
@@ -261,14 +276,14 @@ interface IPublishStatus {
 }
 
 function getEditorEntry(sys: EntityMetaSysProps) {
-  console.log("get editor entry", sys);
+  debug("get editor entry", sys);
   try {
     const result = `https://app.contentful.com/spaces/${sys.space.sys.id}/${
       sys.type === "Asset" ? "assets" : "entries"
     }/${sys.id}`;
     return result;
   } catch (error) {
-    console.log("error", error);
+    console.error("error", error);
     return "/";
   }
 }
@@ -388,7 +403,7 @@ async function doPublish(
       }
       published++;
     } catch (error) {
-      console.log("Error", error);
+      console.error("Error", error);
       errors++;
       errored.push(asset.sys);
     }
@@ -418,7 +433,7 @@ async function doPublish(
       }
       published++;
     } catch (error) {
-      console.log("Entry error", error);
+      console.error("Entry error", error);
       errors++;
       errored.push(entry.sys);
     }
@@ -502,6 +517,7 @@ const Sidebar = () => {
 
       setStatus("Complete");
       const information = buildReferenceInformation(entrySys, allReferences);
+      debug("information", information);
       setInformation(information);
     } catch (error) {
       console.error("Error retrieving information:", error);
@@ -528,13 +544,13 @@ const Sidebar = () => {
     setStatus("Publishing");
     doPublish(information, sdk, setPublishStatus)
       .then((status) => {
-        console.log("Done publishing");
+        debug("Done publishing");
         if (status) {
           retrieveInformation();
         }
       })
       .catch((error) => {
-        console.log("Error publishing", error);
+        console.error("Error publishing", error);
       });
   }, [information, retrieveInformation, sdk]);
 
@@ -543,13 +559,13 @@ const Sidebar = () => {
     setStatus("Publishing");
     doPublish(information, sdk, setPublishStatus, scheduledDate)
       .then((status) => {
-        console.log("Done scheduling publish");
+        debug("Done scheduling publish");
         if (status) {
           retrieveInformation();
         }
       })
       .catch((error) => {
-        console.log("Error scheduling publish", error);
+        console.error("Error scheduling publish", error);
       });
   }, [information, retrieveInformation, sdk, scheduledDate]);
 
