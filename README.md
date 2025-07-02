@@ -1,81 +1,198 @@
-This project was bootstrapped with [Create Contentful App](https://github.com/contentful/create-contentful-app).
+# Contentful Page Status App
 
-## How to use
+**Stop manually publishing 50+ dependencies every time you update a page.** 
 
-Execute create-contentful-app with npm, npx or yarn to bootstrap the example:
+This Contentful app automatically tracks and publishes all your content dependencies with a single click.
+
+## The Problem This Solves
+
+Imagine you're publishing a landing page that contains:
+- 20 content components (hero, testimonials, FAQ sections, etc.)
+- 30 images and assets
+- 5 author profiles
+- Various other linked content
+
+**Without this app**: You need to manually find and publish each of these 55+ items in the correct order before publishing your page. Miss one? Your live site has broken content.
+
+**With this app**: See "55 items need publishing" → Click "Publish all" → Done. ✅
+
+## How It Works
+
+The app appears in your entry editor sidebar and:
+
+```
+1. Scans your content     →  2. Shows status         →  3. One-click publish
+   ┌─────────────┐             ┌─────────────────┐        ┌──────────────┐
+   │ Your Page   │             │ 12 drafts       │        │ Publishing:  │
+   │ ├─ Hero     │             │ 8 updated       │        │ ✓ 15 assets  │
+   │ ├─ Gallery  │ ──────────► │ 3 out of date   │ ────► │ ✓ 8 entries  │
+   │ └─ Footer   │             │ 2 errors        │        │ ✓ Your page  │
+   └─────────────┘             └─────────────────┘        └──────────────┘
+```
+
+## Key Features
+
+### 🔍 Smart Dependency Detection
+- Recursively finds ALL content referenced by your entry
+- Identifies drafts, updated content, and out-of-date references
+- Shows exactly what needs publishing before your content goes live
+
+### 🚀 One-Click Publishing
+- Publishes in the correct order: assets → entries → your main content
+- No more hunting for unpublished dependencies
+- Progress tracking shows what's being published in real-time
+
+### 📅 Scheduled Publishing
+- Schedule your content AND all its dependencies for future publication
+- Perfect for coordinated content releases
+- Set it and forget it
+
+### ⚡ Performance Optimized
+- Excludes circular references automatically
+- Fast loading even for content with hundreds of dependencies
+- Smart caching reduces API calls
+
+## Who This Is For
+
+- **Content Teams**: Managing pages with multiple components
+- **Marketing Teams**: Launching campaigns with many assets
+- **Developers**: Building modular content architectures
+- **Anyone** tired of the "which component did I forget to publish?" game
+
+## Installation
+
+### Quick Start
+
+1. **Clone and install:**
+   ```bash
+   git clone [your-repo-url]
+   cd contentful-page-status
+   npm install
+   ```
+
+2. **Set up in Contentful:**
+   ```bash
+   npm run create-app-definition
+   npm run add-locations  # Choose "Entry Sidebar"
+   ```
+
+3. **Build and deploy:**
+   ```bash
+   npm run build
+   npm run upload
+   ```
+
+That's it! The app now appears in your entry editor sidebar.
+
+### Requirements
+
+- Contentful space with Management API access
+- Node.js 16+
+- Proper publishing permissions in Contentful
+
+## Using the App
+
+### In the Entry Editor
+
+When editing any entry, look for the Page Status widget in the sidebar:
+
+- **Green checkmark**: All dependencies are published
+- **Orange number**: Shows count of items needing publication
+- **Red X**: Errors or missing references detected
+
+### Publishing Options
+
+1. **"Publish all" button**:
+   - Instantly publishes all dependencies
+   - Shows progress (e.g., "Publishing 12 of 25...")
+   - Confirms when complete
+
+2. **"Schedule publishing" button**:
+   - Opens date/time picker
+   - Schedules all content for the same time
+   - Great for embargo dates
+
+### Understanding the Status
+
+The app categorizes content as:
+- **Draft**: Never published (new content)
+- **Updated**: Has unpublished changes
+- **Out of date**: Published after the parent (may cause issues)
+- **Errors**: Broken or inaccessible references
+
+## Development
+
+### Local Development
 
 ```bash
-# npx
-npx create-contentful-app --typescript
-
-# npm
-npm init contentful-app -- --typescript
-
-# Yarn
-yarn create contentful-app --typescript
+npm run dev  # Starts on http://localhost:5173
 ```
 
-## Available Scripts
+**Note**: You'll see a localhost warning - this is normal. The app only fully works within Contentful.
 
-In the project directory, you can run:
+### Project Structure
 
-#### `npm start`
-
-Creates or updates your app definition in Contentful, and runs the app in development mode.
-Open your app to view it in the browser.
-
-The page will reload if you make edits.
-You will also see any lint errors in the console.
-
-#### `npm run build`
-
-Builds the app for production to the `build` folder.
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.
-Your app is ready to be deployed!
-
-#### `npm run upload`
-
-Uploads the build folder to contentful and creates a bundle that is automatically activated.
-The command guides you through the deployment process and asks for all required arguments.
-Read [here](https://www.contentful.com/developers/docs/extensibility/app-framework/create-contentful-app/#deploy-with-contentful) for more information about the deployment process.
-
-#### `npm run upload-ci`
-
-Similar to `npm run upload` it will upload your app to contentful and activate it. The only difference is  
-that with this command all required arguments are read from the environment variables, for example when you add
-the upload command to your CI pipeline.
-
-For this command to work, the following environment variables must be set:
-
-- `CONTENTFUL_ORG_ID` - The ID of your organization
-- `CONTENTFUL_APP_DEF_ID` - The ID of the app to which to add the bundle
-- `CONTENTFUL_ACCESS_TOKEN` - A personal [access token](https://www.contentful.com/developers/docs/references/content-management-api/#/reference/personal-access-tokens)
-
-## Libraries to use
-
-To make your app look and feel like Contentful use the following libraries:
-
-- [Forma 36](https://f36.contentful.com/) – Contentful's design system
-- [Contentful Field Editors](https://www.contentful.com/developers/docs/extensibility/field-editors/) – Contentful's field editor React components
-
-## Using the `contentful-management` SDK
-
-In the default create contentful app output, a contentful management client is
-passed into each location. This can be used to interact with Contentful's
-management API. For example
-
-```js
-// Use the client
-cma.locale.getMany({}).then((locales) => console.log(locales));
+```
+src/locations/Sidebar.tsx  # ← 90% of the app logic is here
+src/App.tsx               # Simple router
+src/index.tsx            # SDK initialization
 ```
 
-Visit the [`contentful-management` documentation](https://www.contentful.com/developers/docs/extensibility/app-framework/sdk/#using-the-contentful-management-library)
-to find out more.
+### Key Scripts
 
-## Learn More
+- `npm run dev` - Development server
+- `npm test` - Run tests
+- `npm run build` - Production build
+- `npm run upload` - Deploy to Contentful
 
-[Read more](https://www.contentful.com/developers/docs/extensibility/app-framework/create-contentful-app/) and check out the video on how to use the CLI.
+### Making Changes
 
-Create Contentful App uses [Create React App](https://create-react-app.dev/). You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started) and how to further customize your app.
+Most modifications happen in `src/locations/Sidebar.tsx`:
+- `fetchAllReferences()` - Customize which content to track
+- `publishAll()` - Modify publishing logic
+- `excludedContentTypes` - Add/remove content types to skip
+
+## Advanced Configuration
+
+### Excluded Content Types
+
+By default, these content types are skipped to prevent circular dependencies:
+- `article`, `page`, `navigation`, `siteSettings`, `redirects`
+
+Modify in `Sidebar.tsx` if your content model differs.
+
+### Environment Variables (CI/CD)
+
+For automated deployments:
+```bash
+CONTENTFUL_ORG_ID=xxx
+CONTENTFUL_APP_DEF_ID=xxx
+CONTENTFUL_ACCESS_TOKEN=xxx
+npm run upload-ci
+```
+
+## Troubleshooting
+
+**Nothing showing in sidebar?**
+- Save your entry first - the app needs an entry ID
+- Check browser console for errors
+- Verify app installation in space settings
+
+**Publishing fails?**
+- Check your publishing permissions
+- Some content may have validation errors
+- Review the error message in the UI
+
+**Too slow with large pages?**
+- Normal for pages with 100+ dependencies
+- Consider breaking very large pages into smaller components
+
+## Support & Contribution
+
+- Report issues: [GitHub Issues]
+- App built with: Contentful App Framework, React, TypeScript
+- Uses Forma 36 design system for native Contentful look
+
+---
+
+*Stop the manual publishing madness. Let Page Status handle your content dependencies.*
