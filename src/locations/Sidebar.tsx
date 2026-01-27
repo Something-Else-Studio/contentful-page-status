@@ -392,7 +392,7 @@ interface IPublishStatus {
 function getEditorEntry(sys: EntityMetaSysProps) {
 	debug("get editor entry", sys);
 	try {
-		const result = `https://app.contentful.com/spaces/${sys.space.sys.id}/${
+		const result = `https://app.contentful.com/spaces/${sys.space.sys.id}/environments/${sys.environment.sys.id}/${
 			sys.type === "Asset" ? "assets" : "entries"
 		}/${sys.id}`;
 		return result;
