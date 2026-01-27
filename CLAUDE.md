@@ -1,5 +1,9 @@
 # Project Context: Contentful Page Status App
 
+## Rules
+- **Always update documentation (CLAUDE.md and README.md) when making code changes.**
+- Ensure that technical details in the documentation match the implementation.
+
 This is a Contentful app that provides intelligent publishing capabilities for content with complex dependency structures. The app helps content editors ensure all referenced content is published before publishing the main entry.
 
 ## Core Functionality
@@ -24,15 +28,15 @@ The app's main purpose is to:
 ```
 /
 ├── src/
-│   ├── index.tsx           # App entry point and SDK initialization
-│   ├── App.tsx            # Location router component
-│   ├── locations/
-│   │   ├── Sidebar.tsx    # Main app logic and UI (MOST IMPORTANT FILE)
-│   │   └── ConfigScreen.tsx # App configuration screen
-│   └── components/
-│       └── LocalhostWarning.tsx # Dev environment warning
+│ ├── index.tsx           # App entry point and SDK initialization
+│ ├── App.tsx            # Location router component
+│ ├── locations/
+│ │ ├── Sidebar.tsx    # Main app logic and UI (MOST IMPORTANT FILE)
+│ │ └── ConfigScreen.tsx # App configuration screen (boilerplate)
+│ └── components/
+│ └── LocalhostWarning.tsx # Dev environment warning
 ├── test/
-│   └── mocks/            # Test mocks for SDK and CMA
+│ └── mocks/            # Test mocks for SDK and CMA
 ├── package.json          # Dependencies and scripts
 ├── vite.config.mts      # Vite configuration
 └── tsconfig.json        # TypeScript configuration
@@ -41,9 +45,9 @@ The app's main purpose is to:
 ## Key File: Sidebar.tsx
 
 This is where 90% of the app logic lives. Key functions:
-- `fetchAllReferences()`: Recursively fetches all content dependencies
-- `publishAll()`: Publishes all unpublished content in the correct order
-- `schedulePublishing()`: Creates scheduled actions for future publication
+- `fetchReferencesIteratively()`: Recursively fetches all outgoing content dependencies
+- `doPublish()`: Handles both immediate and scheduled publishing of content and its dependencies.
+- `ROOT_CONTENT_TYPES`: Array of content types that stop traversal and must be published manually if referenced.
 
 ## Development Commands
 
@@ -77,17 +81,21 @@ npm run upload
 
 ### Modifying the Publishing Logic
 
-The publishing logic in `publishAll()` follows this order:
-1. Publish all draft/updated assets first
-2. Then publish all draft/updated entries
-3. Finally publish the main entry
+The publishing logic in `doPublish()` follows this order:
+1. Publish (or schedule) all draft/updated assets first
+2. Then publish (or schedule) all draft/updated entries
+3. Finally publish (or schedule) the main entry
 4. Handle errors and show appropriate messages
 
-### Updating Excluded Content Types
+### Updating Root Content Types
 
-In `fetchAllReferences()`, certain content types are excluded to prevent circular references:
+In `fetchReferencesIteratively()`, certain content types are marked as "Roots". If encountered during traversal:
+1. They are checked for publication status.
+2. If unpublished, they block the entire publication process (Error).
+3. They are NOT traversed further (recursion stops).
+
 ```typescript
-const excludedContentTypes = ['article', 'page', 'navigation', 'siteSettings', 'redirects'];
+const ROOT_CONTENT_TYPES = ['article', 'page'];
 ```
 
 ### Working with the Contentful SDK
@@ -103,10 +111,10 @@ Key SDK objects available:
 Fetching entries:
 ```typescript
 const response = await sdk.cma.entry.getMany({
-  query: {
-    'sys.id[in]': ids.join(','),
-    include: 2
-  }
+ query: {
+ 'sys.id[in]': ids.join(','),
+ include: 2
+ }
 });
 ```
 
@@ -118,10 +126,10 @@ await sdk.cma.entry.publish({ entryId }, entry);
 Creating scheduled actions:
 ```typescript
 await sdk.cma.scheduledAction.create({
-  entity: { sys: { id: entryId, type: 'Link', linkType: 'Entry' } },
-  environment: { sys: { id: environment.sys.id, type: 'Link', linkType: 'Environment' } },
-  scheduledFor: { datetime: scheduledDate },
-  action: 'publish'
+ entity: { sys: { id: entryId, type: 'Link', linkType: 'Entry' } },
+ environment: { sys: { id: environment.sys.id, type: 'Link', linkType: 'Environment' } },
+ scheduledFor: { datetime: scheduledDate },
+ action: 'publish'
 });
 ```
 
@@ -151,9 +159,9 @@ The app handles several error scenarios:
 1. Build the app: `npm run build`
 2. Upload to Contentful: `npm run upload`
 3. For CI/CD, use: `npm run upload-ci` with environment variables:
-   - `CONTENTFUL_ORG_ID`
-   - `CONTENTFUL_APP_DEF_ID`
-   - `CONTENTFUL_ACCESS_TOKEN`
+ - `CONTENTFUL_ORG_ID`
+ - `CONTENTFUL_APP_DEF_ID`
+ - `CONTENTFUL_ACCESS_TOKEN`
 
 ## Important Notes
 

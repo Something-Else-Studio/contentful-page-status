@@ -122,6 +122,10 @@ The app categorizes content as:
 
 ## Development
 
+### Technical Documentation
+
+For detailed architectural information, code structure, and development rules, please refer to [CLAUDE.md](CLAUDE.md).
+
 ### Local Development
 
 ```bash
@@ -147,19 +151,16 @@ src/index.tsx            # SDK initialization
 
 ### Making Changes
 
-Most modifications happen in `src/locations/Sidebar.tsx`:
-- `fetchAllReferences()` - Customize which content to track
-- `publishAll()` - Modify publishing logic
-- `excludedContentTypes` - Add/remove content types to skip
+Most modifications happen in `src/locations/Sidebar.tsx`. Refer to [CLAUDE.md](CLAUDE.md) for detailed function descriptions and logic flows.
 
 ## Advanced Configuration
 
-### Excluded Content Types
+### Root Content Types
 
-By default, these content types are skipped to prevent circular dependencies:
-- `article`, `page`, `navigation`, `siteSettings`, `redirects`
+By default, these content types are considered "Roots". They are checked for validity but not traversed, and must be published manually if referenced:
+- `article`, `page`
 
-Modify in `Sidebar.tsx` if your content model differs.
+Modify `ROOT_CONTENT_TYPES` in `Sidebar.tsx` to change this behavior.
 
 ### Environment Variables (CI/CD)
 
