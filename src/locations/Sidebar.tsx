@@ -106,6 +106,15 @@ function getLinksFromEntry(entry: EntryProps<KeyValueMap>) {
 	return links;
 }
 
+// Helper to diff arrays and find missing items
+function getMissingIds(
+	requestedIds: string[],
+	foundItems: { sys: { id: string } }[],
+) {
+	const foundIds = new Set(foundItems.map((item) => item.sys.id));
+	return requestedIds.filter((id) => !foundIds.has(id));
+}
+
 // Function to iteratively fetch references with improved deduplication
 async function fetchReferencesIteratively(
 	sdk: SidebarAppSDK,
@@ -135,119 +144,168 @@ async function fetchReferencesIteratively(
 	let processed = 0;
 	let total = 1; // Start with 1 for the initial entry
 
+	// Use a batch size (Contentful API allows up to 1000, but 50-100 is usually safe/fast)
+	const BATCH_SIZE = 50;
+
 	// Process the queue until it's empty
 	while (entriesToProcess.length > 0) {
-		// Get the next entry to process
-		const currentEntryId = entriesToProcess.shift()!;
+		// 1. Get the next batch of IDs
+		const batchIds = entriesToProcess.splice(0, BATCH_SIZE);
 
 		try {
-			// Fetch the entry to inspect its fields
-			// We skip adding the root entry to the results list if it's the very first one
-			// but we still need to process it to find children
-
-			const entry = await sdk.cma.entry.get({
-				entryId: currentEntryId,
+			// 2. Fetch Entries in Batch
+			const response = await sdk.cma.entry.getMany({
+				query: {
+					"sys.id[in]": batchIds.join(","),
+					limit: BATCH_SIZE,
+				},
 			});
 
-			// Update progress counters
-			processed++;
-			if (setProgress) {
-				setProgress({ processed, total });
-			}
+			// Update progress
+			processed += batchIds.length;
+			if (setProgress) setProgress({ processed, total });
 
-			if (!entry) {
-				continue;
-			}
+			// 3. Handle missing entries (ids requested but not returned)
+			const missingIds = getMissingIds(batchIds, response.items);
+			missingIds.forEach((id) => {
+				console.error(`Entry not found: ${id}`);
+				allReferences.errors.push({
+					details: { errors: [{ message: `Entry not found or inaccessible` }] },
+					sys: { id: id, type: "Entry" },
+				} as any);
+			});
 
-			// Log entry details
-			const contentType = entry.sys.contentType.sys.id;
-			const label = getEntryLabel(entry);
+			// 4. Collect Assets to fetch for this batch
+			const assetIdsToFetch = new Set<string>();
 
-			// If this is NOT the initial entry (root of our operation), process it
-			if (currentEntryId !== entryId) {
-				console.log(
-					`Processing [${contentType}] ${entry.sys.id} ("${label}") - Draft: ${isDraft(entry)}, Published: ${isPublished(entry)}, Updated: ${isUpdated(entry)}`,
-				);
+			// 5. Process the fetched entries
+			for (const entry of response.items) {
+				const currentEntryId = entry.sys.id;
+				const contentType = entry.sys.contentType.sys.id;
+				const label = getEntryLabel(entry);
 
-				// Check if it's a Root type
-				if (ROOT_CONTENT_TYPES.includes(contentType)) {
+				// Log entry details
+				if (currentEntryId !== entryId) {
 					console.log(
-						`Stopping search at Root: [${contentType}] ${entry.sys.id} ("${label}")`,
+						`Processing [${contentType}] ${entry.sys.id} ("${label}") - Draft: ${isDraft(entry)}, Published: ${isPublished(entry)}, Updated: ${isUpdated(entry)}`,
 					);
 
-					// It's a root type (like Page/Article) referenced by something else.
-					// We check if it is published.
-					if (!isPublished(entry)) {
-						allReferences.errors.push({
-							details: {
-								errors: [
-									{ message: `Referenced ${contentType} is not published` },
-								],
-								contentType: contentType, // Pass content type explicitly
-							},
-							sys: { id: currentEntryId, type: "Entry" },
-						} as any);
-					}
-					// STOP recursion here. Do not look at its children.
-					continue;
-				}
+					// Check if it's a Root type
+					if (ROOT_CONTENT_TYPES.includes(contentType)) {
+						console.log(
+							`Stopping search at Root: [${contentType}] ${entry.sys.id} ("${label}")`,
+						);
 
-				// It's a normal dependency
-				if (!trackedEntryIds.has(currentEntryId)) {
-					allReferences.entries.push(entry);
-					trackedEntryIds.add(currentEntryId);
-				}
-
-				// Mark as processed for deduplication of fetching
-				if (allReferences.processedEntryIds.has(currentEntryId)) {
-					continue;
-				}
-				allReferences.processedEntryIds.add(currentEntryId);
-			} else {
-				console.log(
-					`Processing ROOT ENTRY [${contentType}] ${entry.sys.id} ("${label}")`,
-				);
-			}
-
-			// Find children (Assets and Entries)
-			const links = getLinksFromEntry(entry);
-
-			for (const link of links) {
-				if (link.type === "Asset") {
-					if (!trackedAssetIds.has(link.id)) {
-						try {
-							const asset = await sdk.cma.asset.get({ assetId: link.id });
-							allReferences.assets.push(asset);
-							trackedAssetIds.add(link.id);
-						} catch (e) {
-							console.error(`Error fetching asset ${link.id}`, e);
+						// It's a root type (like Page/Article) referenced by something else.
+						// We check if it is published.
+						if (!isPublished(entry)) {
 							allReferences.errors.push({
-								details: { errors: [{ message: `Missing asset ${link.id}` }] },
-								sys: { id: link.id, type: "Asset" },
+								details: {
+									errors: [
+										{ message: `Referenced ${contentType} is not published` },
+									],
+									contentType: contentType, // Pass content type explicitly
+								},
+								sys: { id: currentEntryId, type: "Entry" },
 							} as any);
 						}
+						// STOP recursion here. Do not look at its children.
+						continue;
 					}
-				} else if (link.type === "Entry") {
-					if (!entriesQueued.has(link.id)) {
-						entriesToProcess.push(link.id);
-						entriesQueued.add(link.id);
-						total++;
-						if (setProgress) setProgress({ processed, total });
+
+					// It's a normal dependency
+					if (!trackedEntryIds.has(currentEntryId)) {
+						allReferences.entries.push(entry);
+						trackedEntryIds.add(currentEntryId);
+					}
+
+					// Mark as processed for deduplication of fetching
+					if (allReferences.processedEntryIds.has(currentEntryId)) {
+						continue;
+					}
+					allReferences.processedEntryIds.add(currentEntryId);
+				} else {
+					console.log(
+						`Processing ROOT ENTRY [${contentType}] ${entry.sys.id} ("${label}")`,
+					);
+				}
+
+				// Find children (Assets and Entries)
+				const links = getLinksFromEntry(entry);
+
+				for (const link of links) {
+					if (link.type === "Asset") {
+						if (!trackedAssetIds.has(link.id)) {
+							assetIdsToFetch.add(link.id); // Queue asset for batch fetch
+							trackedAssetIds.add(link.id);
+						}
+					} else if (link.type === "Entry") {
+						if (!entriesQueued.has(link.id)) {
+							entriesToProcess.push(link.id);
+							entriesQueued.add(link.id);
+							total++;
+							if (setProgress) setProgress({ processed, total });
+						}
+					}
+				}
+			}
+
+			// 6. Fetch Assets in Batch
+			if (assetIdsToFetch.size > 0) {
+				const assetIds = Array.from(assetIdsToFetch);
+				// We process assets in chunks if there are many, though usually it's smaller than entry count
+				// Reusing BATCH_SIZE for simplicity, or could be larger
+				for (let i = 0; i < assetIds.length; i += BATCH_SIZE) {
+					const assetBatch = assetIds.slice(i, i + BATCH_SIZE);
+					try {
+						const assetsResponse = await sdk.cma.asset.getMany({
+							query: {
+								"sys.id[in]": assetBatch.join(","),
+								limit: assetBatch.length,
+							},
+						});
+						allReferences.assets.push(...assetsResponse.items);
+
+						// Handle missing assets
+						const missingAssets = getMissingIds(
+							assetBatch,
+							assetsResponse.items,
+						);
+						missingAssets.forEach((id) => {
+							console.error(`Missing asset ${id}`);
+							allReferences.errors.push({
+								details: { errors: [{ message: `Missing asset ${id}` }] },
+								sys: { id: id, type: "Asset" },
+							} as any);
+						});
+					} catch (e) {
+						console.error(`Error fetching asset batch`, e);
+						// If batch fails, mark all as missing/error
+						assetBatch.forEach((id) => {
+							allReferences.errors.push({
+								details: {
+									errors: [{ message: `Error fetching asset ${id}` }],
+								},
+								sys: { id: id, type: "Asset" },
+							} as any);
+						});
 					}
 				}
 			}
 		} catch (error) {
-			console.error("Error fetching entry", currentEntryId, ":", error);
-			// Add a generic error
-			allReferences.errors.push({
-				details: {
-					errors: [{ message: `Error fetching entry: ${error}` }],
-				},
-				sys: { id: currentEntryId, type: "Entry" },
-			} as any);
+			console.error("Batch fetch error", error);
+			// Add generic errors for the whole batch of entries
+			batchIds.forEach((id) => {
+				allReferences.errors.push({
+					details: {
+						errors: [{ message: `Error fetching entry batch: ${error}` }],
+					},
+					sys: { id: id, type: "Entry" },
+				} as any);
+			});
 
-			// Update progress
-			processed++;
+			// Update progress even on failure
+			processed += batchIds.length;
 			if (setProgress) {
 				setProgress({ processed, total });
 			}
