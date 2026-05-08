@@ -118,7 +118,7 @@ The app categorizes content as:
 - **Draft**: Never published (new content)
 - **Updated**: Has unpublished changes
 - **Out of date**: Published after the parent (may cause issues)
-- **Errors**: Broken or inaccessible references
+- **Errors**: Broken or inaccessible references (open the browser console to see which entry referenced a missing item)
 
 ## Development
 
@@ -173,6 +173,9 @@ npm run upload-ci
 ```
 
 ## Troubleshooting
+
+**"Blocking: X need publishing" or missing reference?**
+- Open the browser DevTools Console; "Entry not found" and "Missing asset" messages include which entry (and content type) referenced the missing item so you can fix the broken link.
 
 **Nothing showing in sidebar?**
 - Save your entry first - the app needs an entry ID

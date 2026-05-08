@@ -140,6 +140,16 @@ async function fetchReferencesIteratively(
 	const trackedEntryIds = new Set<string>();
 	const trackedAssetIds = new Set<string>();
 
+	// Referrer tracking: which entry (id + contentType) referenced each entry/asset ID
+	const entryReferrers = new Map<
+		string,
+		{ referrerEntryId: string; referrerContentType: string }[]
+	>();
+	const assetReferrers = new Map<
+		string,
+		{ referrerEntryId: string; referrerContentType: string }[]
+	>();
+
 	// Counters for progress
 	let processed = 0;
 	let total = 1; // Start with 1 for the initial entry
@@ -168,9 +178,24 @@ async function fetchReferencesIteratively(
 			// 3. Handle missing entries (ids requested but not returned)
 			const missingIds = getMissingIds(batchIds, response.items);
 			missingIds.forEach((id) => {
-				console.error(`Entry not found: ${id}`);
+				const referrers = entryReferrers.get(id) ?? [];
+				const referrerText =
+					referrers.length > 0
+						? referrers
+								.map(
+									(r) =>
+										`Entry ${r.referrerEntryId} [${r.referrerContentType}]`,
+								)
+								.join(", ")
+						: "unknown";
+				console.error(
+					`Entry not found: ${id} (referenced from: ${referrerText})`,
+				);
 				allReferences.errors.push({
-					details: { errors: [{ message: `Entry not found or inaccessible` }] },
+					details: {
+						errors: [{ message: `Entry not found or inaccessible` }],
+						referrers,
+					},
 					sys: { id: id, type: "Entry" },
 				} as any);
 			});
@@ -232,14 +257,24 @@ async function fetchReferencesIteratively(
 
 				// Find children (Assets and Entries)
 				const links = getLinksFromEntry(entry);
+				const referrer = {
+					referrerEntryId: currentEntryId,
+					referrerContentType: contentType,
+				};
 
 				for (const link of links) {
 					if (link.type === "Asset") {
+						const refs = assetReferrers.get(link.id) ?? [];
+						refs.push(referrer);
+						assetReferrers.set(link.id, refs);
 						if (!trackedAssetIds.has(link.id)) {
 							assetIdsToFetch.add(link.id); // Queue asset for batch fetch
 							trackedAssetIds.add(link.id);
 						}
 					} else if (link.type === "Entry") {
+						const refs = entryReferrers.get(link.id) ?? [];
+						refs.push(referrer);
+						entryReferrers.set(link.id, refs);
 						if (!entriesQueued.has(link.id)) {
 							entriesToProcess.push(link.id);
 							entriesQueued.add(link.id);
@@ -272,9 +307,24 @@ async function fetchReferencesIteratively(
 							assetsResponse.items,
 						);
 						missingAssets.forEach((id) => {
-							console.error(`Missing asset ${id}`);
+							const referrers = assetReferrers.get(id) ?? [];
+							const referrerText =
+								referrers.length > 0
+									? referrers
+											.map(
+												(r) =>
+													`Entry ${r.referrerEntryId} [${r.referrerContentType}]`,
+											)
+											.join(", ")
+									: "unknown";
+							console.error(
+								`Missing asset ${id} (referenced from: ${referrerText})`,
+							);
 							allReferences.errors.push({
-								details: { errors: [{ message: `Missing asset ${id}` }] },
+								details: {
+									errors: [{ message: `Missing asset ${id}` }],
+									referrers,
+								},
 								sys: { id: id, type: "Asset" },
 							} as any);
 						});
@@ -282,9 +332,23 @@ async function fetchReferencesIteratively(
 						console.error(`Error fetching asset batch`, e);
 						// If batch fails, mark all as missing/error
 						assetBatch.forEach((id) => {
+							const referrers = assetReferrers.get(id) ?? [];
+							const referrerText =
+								referrers.length > 0
+									? referrers
+											.map(
+												(r) =>
+													`Entry ${r.referrerEntryId} [${r.referrerContentType}]`,
+											)
+											.join(", ")
+									: "unknown";
+							console.error(
+								`Error fetching asset ${id} (referenced from: ${referrerText})`,
+							);
 							allReferences.errors.push({
 								details: {
 									errors: [{ message: `Error fetching asset ${id}` }],
+									referrers,
 								},
 								sys: { id: id, type: "Asset" },
 							} as any);
@@ -296,9 +360,23 @@ async function fetchReferencesIteratively(
 			console.error("Batch fetch error", error);
 			// Add generic errors for the whole batch of entries
 			batchIds.forEach((id) => {
+				const referrers = entryReferrers.get(id) ?? [];
+				const referrerText =
+					referrers.length > 0
+						? referrers
+								.map(
+									(r) =>
+										`Entry ${r.referrerEntryId} [${r.referrerContentType}]`,
+								)
+								.join(", ")
+						: "unknown";
+				console.error(
+					`Error fetching entry batch (id ${id}) (referenced from: ${referrerText})`,
+				);
 				allReferences.errors.push({
 					details: {
 						errors: [{ message: `Error fetching entry batch: ${error}` }],
+						referrers,
 					},
 					sys: { id: id, type: "Entry" },
 				} as any);

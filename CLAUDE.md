@@ -147,6 +147,8 @@ The app handles several error scenarios:
 - Publishing failures (caught and displayed to user)
 - API rate limits (should implement retry logic if needed)
 
+When an entry or asset is reported as missing or inaccessible, the app tracks which entry (and content type) referenced it. "Entry not found" and "Missing asset" console messages include this referrer info (e.g. `Entry not found: <id> (referenced from: Entry <refId> [contentType])`) so you can locate the broken reference. The same referrer data is attached to the error object as `details.referrers` for potential UI use.
+
 ## Performance Considerations
 
 - Excludes certain content types to avoid infinite recursion
@@ -173,7 +175,7 @@ The app handles several error scenarios:
 ## Debugging Tips
 
 1. Use browser DevTools to inspect API calls
-2. Check the Console for SDK debug messages
+2. Check the Console for SDK debug messages; "Entry not found" and "Missing asset" messages include which entry (and content type) referenced the missing item
 3. The localhost warning component helps identify dev environment
 4. Most errors are caught and displayed in the UI
 
