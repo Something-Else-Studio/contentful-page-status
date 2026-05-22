@@ -1,6 +1,6 @@
-import { SidebarAppSDK } from "@contentful/app-sdk";
-import { EntityMetaSysProps, EntryProps, KeyValueMap } from "contentful-management";
-import { IReferenceInformation, IPublishStatus, IUpstreamRoot } from "./types";
+import type { SidebarAppSDK } from "@contentful/app-sdk";
+import type { EntityMetaSysProps, EntryProps, KeyValueMap } from "contentful-management";
+import type { IReferenceInformation, IPublishStatus, IUpstreamRoot } from "./types";
 
 export async function doPublish(
 	information: IReferenceInformation,

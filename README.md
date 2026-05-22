@@ -73,19 +73,19 @@ The app appears in your entry editor sidebar and:
    ```bash
    git clone [your-repo-url]
    cd contentful-page-status
-   npm install
+   pnpm install
    ```
 
 2. **Set up in Contentful:**
    ```bash
-   npm run create-app-definition
-   npm run add-locations  # Choose "Entry Sidebar"
+   pnpm run create-app-definition
+   pnpm run add-locations  # Choose "Entry Sidebar"
    ```
 
 3. **Build and deploy:**
    ```bash
-   npm run build
-   npm run upload
+   pnpm run build
+   pnpm run upload
    ```
 
 That's it! The app now appears in your entry editor sidebar.
@@ -93,7 +93,8 @@ That's it! The app now appears in your entry editor sidebar.
 ### Requirements
 
 - Contentful space with Management API access
-- Node.js 16+
+- Node.js 24.x (see `.nvmrc`)
+- pnpm 11+
 - Proper publishing permissions in Contentful
 
 ## Using the App
@@ -152,10 +153,10 @@ src/index.tsx            # SDK initialization
 
 ### Key Scripts
 
-- `npm run dev` - Development server
-- `npm test` - Run tests
-- `npm run build` - Production build
-- `npm run upload` - Deploy to Contentful
+- `pnpm run dev` - Development server
+- `pnpm test` - Run tests
+- `pnpm run build` - Production build
+- `pnpm run upload` - Deploy to Contentful
 
 ### Making Changes
 
@@ -181,7 +182,7 @@ For automated deployments:
 CONTENTFUL_ORG_ID=xxx
 CONTENTFUL_APP_DEF_ID=xxx
 CONTENTFUL_ACCESS_TOKEN=xxx
-npm run upload-ci
+pnpm run upload-ci
 ```
 
 ## Troubleshooting

@@ -1,5 +1,5 @@
-import { EntryProps, KeyValueMap } from "contentful-management";
-import { IEditorLinkSys } from "./types";
+import type { EntryProps, KeyValueMap } from "contentful-management";
+import type { IEditorLinkSys } from "./types";
 
 export const ROOT_CONTENT_TYPES = ["article", "page"];
 

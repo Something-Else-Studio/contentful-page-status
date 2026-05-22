@@ -1,13 +1,15 @@
-import { SidebarAppSDK } from "@contentful/app-sdk";
+import type { SidebarAppSDK } from "@contentful/app-sdk";
 import {
-	AssetProps,
-	EntryProps,
-	KeyValueMap,
 	isDraft,
 	isPublished,
 	isUpdated,
 } from "contentful-management";
-import {
+import type {
+	AssetProps,
+	EntryProps,
+	KeyValueMap,
+} from "contentful-management";
+import type {
 	IAllReferences,
 	IEntrySysLike,
 	IReferenceInformation,

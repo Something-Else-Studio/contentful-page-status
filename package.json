@@ -2,13 +2,17 @@
   "name": "page-status",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "packageManager": "pnpm@11.2.2",
   "dependencies": {
-    "@contentful/app-sdk": "^4.29.1",
-    "@contentful/f36-components": "4.79.0",
-    "@contentful/f36-tokens": "4.2.0",
-    "@contentful/react-apps-toolkit": "1.2.16",
-    "contentful-management": "10.46.4",
-    "emotion": "10.0.27",
+    "@contentful/app-sdk": "^4.57.0",
+    "@contentful/f36-components": "6.8.0",
+    "@contentful/f36-tokens": "6.1.2",
+    "@contentful/react-apps-toolkit": "2.0.1",
+    "@emotion/css": "^11.13.5",
+    "contentful-management": "12.5.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
@@ -23,9 +27,6 @@
     "upload": "contentful-app-scripts upload --bundle-dir ./build",
     "upload-ci": "contentful-app-scripts upload --ci --bundle-dir ./build --organization-id $CONTENTFUL_ORG_ID --definition-id $CONTENTFUL_APP_DEF_ID --token $CONTENTFUL_ACCESS_TOKEN"
   },
-  "eslintConfig": {
-    "extends": "react-app"
-  },
   "browserslist": {
     "production": [
       ">0.2%",
@@ -39,18 +40,19 @@
     ]
   },
   "devDependencies": {
-    "@contentful/app-scripts": "^2.3.0",
-    "@testing-library/jest-dom": "^5.17.0",
-    "@testing-library/react": "^14.3.1",
-    "@types/node": "^22.13.5",
-    "@types/react": "18.3.13",
-    "@types/react-dom": "18.3.1",
-    "@vitejs/plugin-react": "^4.0.3",
-    "cross-env": "7.0.3",
-    "jsdom": "^26.0.0",
-    "typescript": "4.9.5",
-    "vite": "^6.2.2",
-    "vitest": "^3.0.9"
+    "@contentful/app-scripts": "^3.0.1",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.12.4",
+    "@types/react": "^18.3.29",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^6.0.2",
+    "cross-env": "10.1.0",
+    "jsdom": "^29.1.1",
+    "typescript": "6.0.3",
+    "vite": "^8.0.14",
+    "vitest": "^4.1.7"
   },
   "homepage": "."
 }

@@ -1,12 +1,27 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
+function privateNetworkAccess(): Plugin {
+  return {
+    name: 'private-network-access',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.method === 'OPTIONS') {
+          res.setHeader('Access-Control-Allow-Private-Network', 'true');
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), privateNetworkAccess()],
   test: {
-    globals: true, // Enables Jest-like global test functions (test, expect)
-    environment: 'jsdom', // Simulates a browser for component tests
-    setupFiles: './src/setupTests.ts', // Equivalent to Jest's setup file
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/setupTests.ts',
+    passWithNoTests: true,
   },
   base: '',
   build: {

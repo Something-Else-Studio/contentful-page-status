@@ -17,12 +17,14 @@ The app's main purpose is to:
 
 ## Tech Stack
 
-- **React 18** with TypeScript
-- **Vite** for building and development
-- **Contentful App SDK** for integration
-- **Forma 36** (Contentful's design system)
-- **Contentful Management API** for content operations
-- **Vitest** for testing
+- **React 18.3** with TypeScript 6
+- **Vite 8** for building and development
+- **Node.js 24** (pinned via `.nvmrc` and `engines`)
+- **pnpm 11** for package management
+- **Contentful App SDK 4** for integration
+- **Forma 36 v6** (Contentful's design system)
+- **Contentful Management API client 12** for content operations
+- **Vitest 4** for testing
 
 ## Code Structure
 
@@ -44,14 +46,16 @@ The app's main purpose is to:
 ├── test/
 │ └── mocks/               # Test mocks for SDK and CMA
 ├── package.json             # Dependencies and scripts
-├── vite.config.mts         # Vite configuration
+├── .nvmrc                   # Node 24 pin
+├── pnpm-workspace.yaml      # pnpm config (React 18 overrides)
+├── vite.config.mts         # Vite + Vitest + PNA dev-server config
 └── tsconfig.json           # TypeScript configuration
 ```
 
 ## Key Files
 
 ### `src/lib/types.ts`
-All shared interfaces. Includes `IEntrySysLike` (minimal sys shape accepted by `buildReferenceInformation` — satisfies both `EntrySys` from app-sdk and `EntryProps.sys` from contentful-management without casting) and `IEditorLinkSys` (minimal shape for `getEditorEntry`).
+All shared interfaces. Includes `IEntrySysLike` (minimal sys shape accepted by `buildReferenceInformation` — satisfies both `EntrySys` from app-sdk and `EntryProps.sys` from contentful-management without casting), `IEditorLinkSys` (minimal shape for `getEditorEntry`), and `EntryReferenceError` (derived from `EntryReferenceProps["errors"]` since contentful-management v12 no longer exports it from the package root).
 
 ### `src/lib/references.ts`
 Core fetch logic:
@@ -81,22 +85,22 @@ The sidebar detects whether the current entry is a root node (`ROOT_CONTENT_TYPE
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Start development server (runs on http://localhost:3000)
 pnpm run dev
 
 # Run tests
-npm test
+pnpm test
 
 # Build for production
-npm run build
+pnpm run build
 
 # Create app definition in Contentful
-npm run create-app-definition
+pnpm run create-app-definition
 
 # Upload to Contentful
-npm run upload
+pnpm run upload
 ```
 
 ## Common Development Tasks
@@ -186,9 +190,9 @@ When an entry or asset is reported as missing or inaccessible, the app tracks wh
 
 ## Deployment
 
-1. Build the app: `npm run build`
-2. Upload to Contentful: `npm run upload`
-3. For CI/CD, use: `npm run upload-ci` with environment variables:
+1. Build the app: `pnpm run build`
+2. Upload to Contentful: `pnpm run upload`
+3. For CI/CD, use: `pnpm run upload-ci` with environment variables:
  - `CONTENTFUL_ORG_ID`
  - `CONTENTFUL_APP_DEF_ID`
  - `CONTENTFUL_ACCESS_TOKEN`

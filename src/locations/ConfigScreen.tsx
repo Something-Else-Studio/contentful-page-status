@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect } from "react";
-import { ConfigAppSDK } from "@contentful/app-sdk";
+import type { ConfigAppSDK } from "@contentful/app-sdk";
 import { Heading, Form, Paragraph, Flex } from "@contentful/f36-components";
-import { css } from "emotion";
+import { css } from "@emotion/css";
 import { /* useCMA, */ useSDK } from "@contentful/react-apps-toolkit";
 
 export interface AppInstallationParameters {}

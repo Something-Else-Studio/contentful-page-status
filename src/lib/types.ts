@@ -1,10 +1,14 @@
-import { EntryReferenceError } from "contentful-management/dist/typings/entities/entry";
-import {
+import type {
 	AssetProps,
 	EntityMetaSysProps,
 	EntryProps,
+	EntryReferenceProps,
 	KeyValueMap,
 } from "contentful-management";
+
+export type EntryReferenceError = NonNullable<
+	EntryReferenceProps["errors"]
+>[number];
 
 export type Status = "Idle" | "Reading" | "Complete" | "Error" | "Publishing";
 
