@@ -135,10 +135,12 @@ For detailed architectural information, code structure, and development rules, p
 ### Local Development
 
 ```bash
-npm run dev  # Starts on http://localhost:5173
+pnpm run dev  # Starts on http://localhost:3000
 ```
 
-**Note**: You'll see a localhost warning - this is normal. The app only fully works within Contentful.
+**Note**: Opening `http://localhost:3000` directly shows a localhost warning — that is normal. The app only fully works when embedded in Contentful.
+
+**Chrome 142+ / new Mac:** If Contentful shows a CORS error loading `localhost`, restart the dev server (this repo sends Private Network Access headers for `app.contentful.com`). Also check `chrome://settings/content/localNetworkAccess` is set to **Sites can ask to connect to devices on your local network**.
 
 ### Project Structure
 
@@ -187,7 +189,12 @@ npm run upload-ci
 **"Blocking: X need publishing" or missing reference?**
 - Open the browser DevTools Console; "Entry not found" and "Missing asset" messages include which entry (and content type) referenced the missing item so you can fix the broken link.
 
-**Nothing showing in sidebar?**
+**CORS error loading localhost in Contentful (new Mac / Chrome 142+)?**
+- Chrome blocks `https://app.contentful.com` from loading `http://localhost` unless the dev server sends `Access-Control-Allow-Private-Network: true` (handled by `vite.config.mts`).
+- Restart `pnpm run dev` after pulling changes.
+- In Chrome, open `chrome://settings/content/localNetworkAccess` and ensure **Sites can ask to connect to devices on your local network** is enabled.
+- Confirm the app URL in Contentful is exactly `http://localhost:3000` (not `3001` if the port shifted because another process was using 3000).
+
 - Save your entry first - the app needs an entry ID
 - Check browser console for errors
 - Verify app installation in space settings

@@ -83,8 +83,8 @@ The sidebar detects whether the current entry is a root node (`ROOT_CONTENT_TYPE
 # Install dependencies
 npm install
 
-# Start development server (runs on http://localhost:5173)
-npm run dev
+# Start development server (runs on http://localhost:3000)
+pnpm run dev
 
 # Run tests
 npm test
@@ -205,6 +205,7 @@ When an entry or asset is reported as missing or inaccessible, the app tracks wh
 1. Use browser DevTools to inspect API calls
 2. Check the Console for SDK debug messages; "Entry not found" and "Missing asset" messages include which entry (and content type) referenced the missing item
 3. The localhost warning component helps identify dev environment
+4. Chrome 142+ Local Network Access: the Vite dev server must respond to PNA preflights from `app.contentful.com` with `Access-Control-Allow-Private-Network: true` (see `vite.config.mts`)
 4. Most errors are caught and displayed in the UI
 
 ## Future Improvements to Consider
