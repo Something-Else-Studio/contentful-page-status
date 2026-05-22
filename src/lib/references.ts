@@ -16,8 +16,7 @@ import type {
 	IUpstreamRootsResult,
 } from "./types";
 import { ROOT_CONTENT_TYPES, getLinksFromEntry, getMissingIds } from "./utils";
-
-const debug = (..._args: unknown[]) => {};
+import { debugLog, debugError } from "./debug";
 
 const REF_CACHE_TTL_MS = 60_000;
 const refInfoCache = new Map<string, { ts: number; refs: IAllReferences }>();
@@ -84,7 +83,7 @@ export async function fetchReferencesIteratively(
 								)
 								.join(", ")
 						: "unknown";
-				console.error(
+				debugError(
 					`Entry not found: ${id} (referenced from: ${referrerText})`,
 				);
 				allReferences.errors.push({
@@ -103,12 +102,12 @@ export async function fetchReferencesIteratively(
 				const contentType = entry.sys.contentType.sys.id;
 
 				if (currentEntryId !== entryId) {
-					console.log(
+					debugLog(
 						`Processing [${contentType}] ${entry.sys.id} ("${entry.sys.id}") - Draft: ${isDraft(entry)}, Published: ${isPublished(entry)}, Updated: ${isUpdated(entry)}`,
 					);
 
 					if (ROOT_CONTENT_TYPES.includes(contentType)) {
-						console.log(
+						debugLog(
 							`Stopping search at Root: [${contentType}] ${entry.sys.id}`,
 						);
 						if (!isPublished(entry)) {
@@ -135,7 +134,7 @@ export async function fetchReferencesIteratively(
 					}
 					allReferences.processedEntryIds.add(currentEntryId);
 				} else {
-					console.log(
+					debugLog(
 						`Processing ROOT ENTRY [${contentType}] ${entry.sys.id}`,
 					);
 				}
@@ -193,7 +192,7 @@ export async function fetchReferencesIteratively(
 											)
 											.join(", ")
 									: "unknown";
-							console.error(
+							debugError(
 								`Missing asset ${id} (referenced from: ${referrerText})`,
 							);
 							allReferences.errors.push({
@@ -202,7 +201,7 @@ export async function fetchReferencesIteratively(
 							} as any);
 						});
 					} catch (e) {
-						console.error(`Error fetching asset batch`, e);
+						debugError(`Error fetching asset batch`, e);
 						assetBatch.forEach((id) => {
 							const referrers = assetReferrers.get(id) ?? [];
 							allReferences.errors.push({
@@ -217,7 +216,7 @@ export async function fetchReferencesIteratively(
 				}
 			}
 		} catch (error) {
-			console.error("Batch fetch error", error);
+			debugError("Batch fetch error", error);
 			batchIds.forEach((id) => {
 				const referrers = entryReferrers.get(id) ?? [];
 				allReferences.errors.push({
@@ -277,7 +276,7 @@ export function buildReferenceInformation(
 		(assetsPublishedAfter?.length ?? 0) > 0 ||
 		(entriesPublishedAfter?.length ?? 0) > 0;
 
-	console.log("Stats:", {
+	debugLog("Stats:", {
 		entryCount,
 		draftEntryCount,
 		updatedEntryCount,
@@ -287,7 +286,7 @@ export function buildReferenceInformation(
 		errorCount,
 	});
 
-	debug({ isEntryPublished, isEntryUpdated, assetsPublishedAfter, entriesPublishedAfter });
+	debugLog({ isEntryPublished, isEntryUpdated, assetsPublishedAfter, entriesPublishedAfter });
 
 	return {
 		published: isEntryPublished && !isEntryUpdated && !isOutOfDate,
@@ -338,7 +337,7 @@ export async function fetchUpstreamRoots(
 				}
 			}
 		} catch (error) {
-			console.error(`Error fetching referrers for ${id}:`, error);
+			debugError(`Error fetching referrers for ${id}:`, error);
 			failedLookups++;
 		}
 

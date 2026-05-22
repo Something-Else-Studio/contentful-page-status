@@ -35,6 +35,7 @@ The app's main purpose is to:
 │ ├── App.tsx                # Location router component
 │ ├── lib/
 │ │ ├── types.ts           # All shared interfaces and types
+│ │ ├── debug.ts           # debugLog/debugError gated by DEBUG_ENABLED; logError always on for operational failures
 │ │ ├── utils.ts           # Pure helpers: ROOT_CONTENT_TYPES, getEntryLabel, getEditorEntry, etc.
 │ │ ├── references.ts      # Fetch logic: fetchReferencesIteratively, fetchUpstreamRoots, buildReferenceInformation, cache
 │ │ └── publish.ts         # Publish orchestration: doPublish, doReversePublish
@@ -61,17 +62,17 @@ All shared interfaces. Includes `IEntrySysLike` (minimal sys shape accepted by `
 Core fetch logic:
 - `fetchReferencesIteratively()`: Downward BFS — recursively fetches all outgoing dependencies. Results cached for 60 s by entry ID.
 - `buildReferenceInformation()`: Builds `IReferenceInformation` from raw references. Parameter typed as `IEntrySysLike` (no unsafe casts needed).
-- `fetchUpstreamRoots()`: Upward BFS via `links_to_entry` CMA query. Returns all root-type ancestors plus a `failedLookups` count. Caps: Sidebar processes at most `UPSTREAM_ROOT_LIMIT` (10) roots.
+- `fetchUpstreamRoots()`: Upward BFS via `links_to_entry` CMA query. Returns all root-type ancestors plus a `failedLookups` count. Caps: Sidebar processes at most `UPSTREAM_ROOT_LIMIT` (50) roots for full dependency analysis; the "Used on" header reflects the total discovered count.
 
 ### `src/lib/publish.ts`
 - `doPublish()`: Immediate or scheduled publishing of a dependency set. Optional `overrideEntry` publishes a different entry than the current sidebar entry.
-- `doReversePublish()`: Publishes the component first, then each safe upstream root in sequence.
+- `doReversePublish()`: Publishes the component first (unless `skipComponentPublish`), then each selected safe upstream root in sequence.
 
 ### `src/lib/utils.ts`
-Pure, SDK-free helpers: `ROOT_CONTENT_TYPES`, `getEntryLabel`, `getLinksFromEntry`, `getMissingIds`, `getEditorEntry` (typed with `IEditorLinkSys` — no `EntityMetaSysProps` cast).
+Pure, SDK-free helpers: `ROOT_CONTENT_TYPES`, `getEntryLabel`, `getEntrySlug`, `getLinksFromEntry`, `getMissingIds`, `getEditorEntry` (typed with `IEditorLinkSys` — no `EntityMetaSysProps` cast).
 
 ### `src/locations/Sidebar.tsx`
-React component only. Uses two loading phases ("Scanning dependencies…" / "Finding pages that use this…") with distinct progress labels. Shows upstream roots grouped by content type with safe/blocked badges, truncated-count note, and failed-lookup warning.
+React component only. Uses two loading phases ("Scanning dependencies…" / "Finding pages that use this…") with distinct progress labels and detail text (including per-page progress during upstream analysis). Shows upstream roots left-aligned with slug labels, per-page checkboxes (plus select-all), safe/blocked badges, truncated-count note (when more than 50 roots exist), and failed-lookup warning. Up-to-date status reads "This entry is up to date" (not dependency count, which is 0 for leaf components).
 
 ## Two Operating Modes
 
@@ -79,7 +80,7 @@ The sidebar detects whether the current entry is a root node (`ROOT_CONTENT_TYPE
 
 **Root mode** (article / page): Existing behaviour — traverse all dependencies downward, publish them, then publish the root.
 
-**Component mode** (any other content type): After fetching the component's own dependencies, `fetchUpstreamRoots()` is called to find all pages/articles that (directly or indirectly) reference this component. Each root is checked with `fetchReferencesIteratively` + `buildReferenceInformation`. The UI shows a "Used on N pages" section with safe/blocked status for each root. The publish button label changes to "Publish + N pages" and triggers `doReversePublish`.
+**Component mode** (any other content type): After fetching the component's own dependencies, `fetchUpstreamRoots()` is called to find all pages/articles that (directly or indirectly) reference this component. Each root is checked with `fetchReferencesIteratively` + `buildReferenceInformation`. The UI shows a left-aligned "Used on N pages" section with slug labels, checkboxes (all safe roots selected by default), and safe/blocked status for each root. The publish button label reflects the selected count (`Publish + N pages` or `Publish N pages` when the component is up to date). Only selected safe roots are passed to `doReversePublish`. When the component and its dependencies are already published, selecting pages still enables publish for those roots only (`skipComponentPublish`).
 
 ## Development Commands
 
@@ -207,10 +208,10 @@ When an entry or asset is reported as missing or inaccessible, the app tracks wh
 ## Debugging Tips
 
 1. Use browser DevTools to inspect API calls
-2. Check the Console for SDK debug messages; "Entry not found" and "Missing asset" messages include which entry (and content type) referenced the missing item
+2. Verbose console output (reference traversal, stats, missing-entry diagnostics) is **off by default**. Enable via `VITE_DEBUG=true` when running dev (`pnpm run dev`), or set `DEBUG_FROM_SOURCE = true` in [`src/lib/debug.ts`](src/lib/debug.ts). Publish and sidebar fetch errors always use `logError` (not gated).
 3. The localhost warning component helps identify dev environment
 4. Chrome 142+ Local Network Access: the Vite dev server must respond to PNA preflights from `app.contentful.com` with `Access-Control-Allow-Private-Network: true` (see `vite.config.mts`)
-4. Most errors are caught and displayed in the UI
+5. Most errors are caught and displayed in the UI
 
 ## Future Improvements to Consider
 

@@ -39,8 +39,10 @@ The app appears in your entry editor sidebar and:
 
 ### 🔄 Reverse Publish (Components → Pages)
 - On a shared component? The app finds every page/article that uses it
-- Shows a "Used on N pages" list with safe/blocked status for each
-- One click publishes the component *and* all safe pages that reference it
+- Shows a left-aligned "Used on N pages" list with slugs, safe/blocked badges, and checkboxes (up to 50 pages fully analysed; total count shown in header even if capped)
+- Select or deselect individual pages (or use select-all); blocked pages cannot be selected
+- One click publishes the component *and* selected safe pages that reference it
+- When the component is already up to date, you can still publish selected pages only
 - Pages with unresolved dependencies are flagged and skipped automatically
 
 ### 🚀 One-Click Publishing
@@ -171,7 +173,7 @@ By default, these content types are considered "Roots":
 
 **When the sidebar is open on a root entry**: the app traverses all dependencies downward and publishes them before publishing the root.
 
-**When the sidebar is open on any other entry (a component)**: the app traverses upward to find all root-type ancestors and shows them in a "Used on N pages" section. Publishing the component also republishes all safe root ancestors.
+**When the sidebar is open on any other entry (a component)**: the app traverses upward to find all root-type ancestors and shows them in a left-aligned "Used on N pages" section (slug labels, checkboxes). Publishing republishes selected safe root ancestors; when the component itself is up to date, publish is still available for selected pages only.
 
 Modify `ROOT_CONTENT_TYPES` in `Sidebar.tsx` to change which content types are considered roots.
 

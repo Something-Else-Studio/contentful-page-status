@@ -1,6 +1,7 @@
 import type { SidebarAppSDK } from "@contentful/app-sdk";
 import type { EntityMetaSysProps, EntryProps, KeyValueMap } from "contentful-management";
 import type { IReferenceInformation, IPublishStatus, IUpstreamRoot } from "./types";
+import { logError } from "./debug";
 
 export async function doPublish(
 	information: IReferenceInformation,
@@ -65,7 +66,7 @@ export async function doPublish(
 			}
 			return true;
 		} catch (error) {
-			console.error(`Error scheduling ${entityType}:`, error);
+			logError(`Error scheduling ${entityType}:`, error);
 			throw error;
 		}
 	};
@@ -83,7 +84,7 @@ export async function doPublish(
 			}
 			return true;
 		} catch (error) {
-			console.error(`Error publishing ${entityType}:`, error);
+			logError(`Error publishing ${entityType}:`, error);
 			throw error;
 		}
 	};
@@ -155,7 +156,7 @@ export async function doPublish(
 				}
 			}
 		} catch (error) {
-			console.error("Error with main entry:", error);
+			logError("Error with main entry:", error);
 			errors++;
 		}
 	}
@@ -169,9 +170,12 @@ export async function doReversePublish(
 	sdk: SidebarAppSDK,
 	setStatus: (status: IPublishStatus) => void,
 	scheduledTime?: string,
+	options?: { skipComponentPublish?: boolean },
 ): Promise<boolean> {
-	const ok = await doPublish(information, sdk, setStatus, scheduledTime);
-	if (!ok) return false;
+	if (!options?.skipComponentPublish) {
+		const ok = await doPublish(information, sdk, setStatus, scheduledTime);
+		if (!ok) return false;
+	}
 
 	for (const root of upstreamRoots.filter((r) => r.safe)) {
 		await doPublish(

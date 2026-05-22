@@ -1,5 +1,6 @@
 import type { EntryProps, KeyValueMap } from "contentful-management";
 import type { IEditorLinkSys } from "./types";
+import { logError } from "./debug";
 
 export const ROOT_CONTENT_TYPES = ["article", "page"];
 
@@ -21,6 +22,14 @@ export function getEntryLabel(entry: EntryProps<KeyValueMap>): string {
 	}
 
 	return "Untitled";
+}
+
+export function getEntrySlug(entry: EntryProps<KeyValueMap>): string {
+	const slugField = entry.fields?.["slug"];
+	if (slugField) {
+		return slugField["en-US"] || Object.values(slugField)[0] || "";
+	}
+	return getEntryLabel(entry);
 }
 
 export function getLinksFromEntry(entry: EntryProps<KeyValueMap>) {
@@ -59,7 +68,7 @@ export function getEditorEntry(sys: IEditorLinkSys): string {
 			sys.type === "Asset" ? "assets" : "entries"
 		}/${sys.id}`;
 	} catch (error) {
-		console.error("getEditorEntry error", error);
+		logError("getEditorEntry error", error);
 		return "/";
 	}
 }

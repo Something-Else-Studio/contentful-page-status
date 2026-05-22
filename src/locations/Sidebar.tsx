@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import {
 	Badge,
 	Button,
+	Checkbox,
 	Flex,
 	List,
 	ListItem,
 	Note,
-	Paragraph,
 	Text,
 	Stack,
 	Box,
@@ -21,7 +21,7 @@ import type {
 } from "../lib/types";
 import {
 	ROOT_CONTENT_TYPES,
-	getEntryLabel,
+	getEntrySlug,
 	getEditorEntry,
 } from "../lib/utils";
 import {
@@ -30,10 +30,33 @@ import {
 	fetchUpstreamRoots,
 } from "../lib/references";
 import { doPublish, doReversePublish } from "../lib/publish";
+import { logError } from "../lib/debug";
 
 type Status = "Idle" | "Reading" | "Complete" | "Error" | "Publishing";
 
-const UPSTREAM_ROOT_LIMIT = 10;
+const UPSTREAM_ROOT_LIMIT = 50;
+
+function formatRootsLabelFromCounts(
+	countsByType: Record<string, number>,
+): string {
+	return (
+		Object.entries(countsByType)
+			.map(([ct, n]) => `${n} ${ct}${n !== 1 ? "s" : ""}`)
+			.join(", ") || "root entries"
+	);
+}
+
+function formatRootsLabel(roots: IUpstreamRoot[]): string {
+	const rootsByType = roots.reduce(
+		(acc, r) => {
+			const ct = r.entry.sys.contentType.sys.id;
+			acc[ct] = (acc[ct] ?? 0) + 1;
+			return acc;
+		},
+		{} as Record<string, number>,
+	);
+	return formatRootsLabelFromCounts(rootsByType);
+}
 
 const Sidebar = () => {
 	const sdk = useSDK<SidebarAppSDK>();
@@ -49,11 +72,18 @@ const Sidebar = () => {
 		isComplete: false,
 	});
 	const [loadingPhase, setLoadingPhase] = useState("Scanning dependencies...");
+	const [loadingDetail, setLoadingDetail] = useState<string>();
 	const [scheduledDate, setScheduledDate] = useState<string>("");
 	const [showScheduleOptions, setShowScheduleOptions] = useState(false);
 	const [upstreamRoots, setUpstreamRoots] = useState<IUpstreamRoot[]>([]);
+	const [upstreamRootsByType, setUpstreamRootsByType] = useState<
+		Record<string, number>
+	>({});
 	const [upstreamFailedLookups, setUpstreamFailedLookups] = useState(0);
 	const [upstreamTruncated, setUpstreamTruncated] = useState(0);
+	const [selectedRootIds, setSelectedRootIds] = useState<Set<string>>(
+		new Set(),
+	);
 
 	// sdk is stable for the entire sidebar lifecycle; this value never changes
 	const isRootEntry = ROOT_CONTENT_TYPES.includes(sdk.entry.getSys().contentType.sys.id);
@@ -72,7 +102,9 @@ const Sidebar = () => {
 	const retrieveInformation = useCallback(async () => {
 		setStatus("Reading");
 		setProgress({ processed: 0, total: 1, isComplete: false });
+		setLoadingDetail(undefined);
 		setUpstreamRoots([]);
+		setUpstreamRootsByType({});
 		setUpstreamFailedLookups(0);
 		setUpstreamTruncated(0);
 
@@ -80,6 +112,7 @@ const Sidebar = () => {
 			const entrySys = sdk.entry.getSys();
 
 			setLoadingPhase("Scanning dependencies...");
+			setLoadingDetail("Checking this entry and its references…");
 			const allReferences = await fetchReferencesIteratively(
 				sdk,
 				entrySys.id,
@@ -90,7 +123,10 @@ const Sidebar = () => {
 			setInformation(info);
 
 			if (!isRootEntry) {
-				setLoadingPhase("Finding pages that use this...");
+				setLoadingPhase("Finding pages that use this…");
+				setLoadingDetail(
+					"Tracing referrers — widely used components can take a minute.",
+				);
 				setProgress({ processed: 0, total: 1, isComplete: false });
 
 				const { roots: allRoots, failedLookups } = await fetchUpstreamRoots(
@@ -100,27 +136,59 @@ const Sidebar = () => {
 				);
 
 				setUpstreamFailedLookups(failedLookups);
+				const rootsByType = allRoots.reduce(
+					(acc, root) => {
+						const ct = root.sys.contentType.sys.id;
+						acc[ct] = (acc[ct] ?? 0) + 1;
+						return acc;
+					},
+					{} as Record<string, number>,
+				);
+				setUpstreamRootsByType(rootsByType);
 				const truncated = Math.max(0, allRoots.length - UPSTREAM_ROOT_LIMIT);
 				setUpstreamTruncated(truncated);
 
-				setLoadingPhase("Analysing pages...");
-				const rootInfos = await Promise.all(
-					allRoots.slice(0, UPSTREAM_ROOT_LIMIT).map(async (root) => {
+				const rootsToAnalyze = allRoots.slice(0, UPSTREAM_ROOT_LIMIT);
+				const rootInfos: IUpstreamRoot[] = [];
+
+				if (rootsToAnalyze.length > 0) {
+					setLoadingDetail(
+						`Found ${formatRootsLabelFromCounts(rootsByType)}. Checking each page's dependencies…`,
+					);
+					setProgress({
+						processed: 0,
+						total: rootsToAnalyze.length,
+						isComplete: false,
+					});
+
+					for (let i = 0; i < rootsToAnalyze.length; i++) {
+						const root = rootsToAnalyze[i];
+						setLoadingPhase(
+							`Analysing pages (${i + 1} of ${rootsToAnalyze.length})…`,
+						);
 						const refs = await fetchReferencesIteratively(sdk, root.sys.id);
 						const rootInfo = buildReferenceInformation(root.sys, refs);
-						return {
+						rootInfos.push({
 							entry: root,
 							information: rootInfo,
 							safe: rootInfo.errorCount === 0,
-						};
-					}),
-				);
+						});
+						setProgress({
+							processed: i + 1,
+							total: rootsToAnalyze.length,
+							isComplete: i + 1 === rootsToAnalyze.length,
+						});
+					}
+				} else {
+					setLoadingDetail("No pages or articles reference this entry.");
+				}
+
 				setUpstreamRoots(rootInfos);
 			}
 
 			setStatus("Complete");
 		} catch (err) {
-			console.error("Error retrieving information:", err);
+			logError("Error retrieving information:", err);
 			setStatus("Error");
 			setError(`Error: ${err}`);
 		}
@@ -141,39 +209,95 @@ const Sidebar = () => {
 		setScheduledDate(tomorrow.toISOString().substring(0, 16));
 	}, []);
 
+	useEffect(() => {
+		const safeIds = upstreamRoots
+			.filter((r) => r.safe)
+			.map((r) => r.entry.sys.id);
+		setSelectedRootIds(new Set(safeIds));
+	}, [upstreamRoots]);
+
 	const handlePublish = useCallback(() => {
 		if (!information) return;
 		setStatus("Publishing");
+
+		const selectedSafeRoots = upstreamRoots.filter(
+			(r) => r.safe && selectedRootIds.has(r.entry.sys.id),
+		);
+		const skipComponentPublish =
+			information.draftEntryCount +
+				information.updatedEntryCount +
+				information.draftAssetCount +
+				information.updatedAssetCount ===
+				0 &&
+			information.errorCount === 0 &&
+			information.published;
+
 		const publish =
-			!isRootEntry && upstreamRoots.length > 0
-				? doReversePublish(information, upstreamRoots, sdk, setPublishStatus)
+			!isRootEntry && selectedSafeRoots.length > 0
+				? doReversePublish(
+						information,
+						selectedSafeRoots,
+						sdk,
+						setPublishStatus,
+						undefined,
+						{ skipComponentPublish },
+					)
 				: doPublish(information, sdk, setPublishStatus);
 		publish
 			.then((ok) => {
 				if (ok) retrieveInformation();
 			})
-			.catch((err) => console.error("Error publishing", err));
-	}, [information, retrieveInformation, sdk, isRootEntry, upstreamRoots]);
+			.catch((err) => logError("Error publishing", err));
+	}, [
+		information,
+		retrieveInformation,
+		sdk,
+		isRootEntry,
+		upstreamRoots,
+		selectedRootIds,
+	]);
 
 	const handleScheduledPublish = useCallback(() => {
 		if (!information || !scheduledDate) return;
 		setStatus("Publishing");
+
+		const selectedSafeRoots = upstreamRoots.filter(
+			(r) => r.safe && selectedRootIds.has(r.entry.sys.id),
+		);
+		const skipComponentPublish =
+			information.draftEntryCount +
+				information.updatedEntryCount +
+				information.draftAssetCount +
+				information.updatedAssetCount ===
+				0 &&
+			information.errorCount === 0 &&
+			information.published;
+
 		const publish =
-			!isRootEntry && upstreamRoots.length > 0
+			!isRootEntry && selectedSafeRoots.length > 0
 				? doReversePublish(
 						information,
-						upstreamRoots,
+						selectedSafeRoots,
 						sdk,
 						setPublishStatus,
 						scheduledDate,
+						{ skipComponentPublish },
 					)
 				: doPublish(information, sdk, setPublishStatus, scheduledDate);
 		publish
 			.then((ok) => {
 				if (ok) retrieveInformation();
 			})
-			.catch((err) => console.error("Error scheduling publish", err));
-	}, [information, retrieveInformation, sdk, scheduledDate, isRootEntry, upstreamRoots]);
+			.catch((err) => logError("Error scheduling publish", err));
+	}, [
+		information,
+		retrieveInformation,
+		sdk,
+		scheduledDate,
+		isRootEntry,
+		upstreamRoots,
+		selectedRootIds,
+	]);
 
 	const toggleScheduleOptions = useCallback(() => {
 		setShowScheduleOptions((prev) => !prev);
@@ -185,15 +309,27 @@ const Sidebar = () => {
 
 	// ── Loading ──────────────────────────────────────────────────────────────
 	if (status === "Idle" || status === "Reading") {
+		const progressLabel =
+			progress.total > 1
+				? `${progress.processed} of ${progress.total}`
+				: progress.total === 1 && progress.processed > 0
+					? `${progress.processed} processed`
+					: null;
+
 		return (
 			<Box padding="spacingM">
-				<Stack spacing="spacingS">
-					<Paragraph>{loadingPhase}</Paragraph>
+				<Stack spacing="spacingS" flexDirection="column" alignItems="flex-start">
+					<Text fontWeight="fontWeightMedium">{loadingPhase}</Text>
+					{loadingDetail && (
+						<Text fontSize="fontSizeS" fontColor="gray600">
+							{loadingDetail}
+						</Text>
+					)}
 					{progress.total > 0 && (
-						<Stack spacing="spacingS">
-							<Text>
-								Processing {progress.processed} of {progress.total} entries
-							</Text>
+						<Stack spacing="spacingS" style={{ width: "100%" }}>
+							{progressLabel && (
+								<Text fontSize="fontSizeS">{progressLabel}</Text>
+							)}
 							<div
 								style={{
 									width: "100%",
@@ -206,7 +342,12 @@ const Sidebar = () => {
 								<div
 									style={{
 										width: `${
-											(progress.processed / Math.max(progress.total, 1)) * 100
+											progress.total > 0
+												? Math.max(
+														(progress.processed / progress.total) * 100,
+														progress.processed === 0 ? 8 : 0,
+													)
+												: 0
 										}%`,
 										height: "100%",
 										backgroundColor: "#0047CC",
@@ -279,10 +420,58 @@ const Sidebar = () => {
 			information.draftAssetCount +
 			information.updatedAssetCount;
 
-		const publishNeeded =
+		const selectedSafeRoots = upstreamRoots.filter(
+			(r) => r.safe && selectedRootIds.has(r.entry.sys.id),
+		);
+		const safeRootIds = upstreamRoots
+			.filter((r) => r.safe)
+			.map((r) => r.entry.sys.id);
+		const allSafeSelected =
+			safeRootIds.length > 0 &&
+			safeRootIds.every((id) => selectedRootIds.has(id));
+		const someSafeSelected = safeRootIds.some((id) =>
+			selectedRootIds.has(id),
+		);
+
+		const componentPublishNeeded =
 			information.errorCount > 0 ||
 			!information.published ||
 			(information.errorCount === 0 && publishNeedCount > 0);
+
+		const publishNeeded =
+			componentPublishNeeded ||
+			(!isRootEntry && selectedSafeRoots.length > 0);
+
+		const rootsLabel = formatRootsLabelFromCounts(upstreamRootsByType);
+		const selectedRootsLabel = formatRootsLabel(selectedSafeRoots);
+		const selectionOnlyPublish =
+			!isRootEntry &&
+			selectedSafeRoots.length > 0 &&
+			!componentPublishNeeded;
+		const publishButtonLabel =
+			!isRootEntry && selectedSafeRoots.length > 0
+				? selectionOnlyPublish
+					? `Publish ${selectedRootsLabel}`
+					: `Publish + ${selectedRootsLabel}`
+				: "Publish Now";
+
+		const handleSelectAll = () => {
+			if (allSafeSelected) {
+				setSelectedRootIds(new Set());
+			} else {
+				setSelectedRootIds(new Set(safeRootIds));
+			}
+		};
+
+		const handleToggleRoot = (id: string, safe: boolean) => {
+			if (!safe) return;
+			setSelectedRootIds((prev) => {
+				const next = new Set(prev);
+				if (next.has(id)) next.delete(id);
+				else next.add(id);
+				return next;
+			});
+		};
 
 		const errorGroups = information.errors?.reduce(
 			(acc, err) => {
@@ -299,29 +488,10 @@ const Sidebar = () => {
 					.join(" and ")
 			: "";
 
-		// Dynamic label derived from actual content types of upstream roots
-		const rootsByType = upstreamRoots.reduce(
-			(acc, r) => {
-				const ct = r.entry.sys.contentType.sys.id;
-				acc[ct] = (acc[ct] ?? 0) + 1;
-				return acc;
-			},
-			{} as Record<string, number>,
-		);
-		const rootsLabel =
-			Object.entries(rootsByType)
-				.map(([ct, n]) => `${n} ${ct}${n !== 1 ? "s" : ""}`)
-				.join(", ") || "root entries";
-
-		const safeRootCount = upstreamRoots.filter((r) => r.safe).length;
-		const publishButtonLabel =
-			!isRootEntry && safeRootCount > 0
-				? `Publish + ${rootsLabel}`
-				: "Publish Now";
-
 		return (
 			<Box>
 				{publishNeeded ? (
+					<Box padding={selectionOnlyPublish ? "spacingM" : undefined}>
 					<Stack
 						spacing="spacingM"
 						flexDirection="column"
@@ -367,6 +537,9 @@ const Sidebar = () => {
 							</Stack>
 						) : (
 							<>
+								{selectionOnlyPublish && (
+									<Note variant="positive">This entry is up to date</Note>
+								)}
 								{publishNeedCount > 0 && information.errorCount === 0 && (
 									<Text>
 										{publishNeedCount} item
@@ -395,6 +568,7 @@ const Sidebar = () => {
 							</>
 						)}
 					</Stack>
+					</Box>
 				) : (
 					<Box padding="spacingM">
 						<Stack
@@ -402,10 +576,7 @@ const Sidebar = () => {
 							flexDirection="column"
 							alignItems="flex-start"
 						>
-							<Note variant="positive">
-								All {information.entryCount + information.assetCount} items up
-								to date
-							</Note>
+							<Note variant="positive">This entry is up to date</Note>
 							<Button onClick={handleRefresh} variant="secondary" size="small">
 								Refresh
 							</Button>
@@ -418,28 +589,77 @@ const Sidebar = () => {
 						padding="spacingS"
 						style={{ borderTop: "1px solid #DCDEE4", marginTop: "8px" }}
 					>
-						<Stack spacing="spacingS" flexDirection="column">
-							<Text fontWeight="fontWeightMedium" fontSize="fontSizeS">
-								Used on {rootsLabel}
-							</Text>
-							<List>
-								{upstreamRoots.map((root) => (
-									<ListItem key={root.entry.sys.id}>
-										<Flex justifyContent="space-between" alignItems="center">
-											<a
-												href={getEditorEntry(root.entry.sys)}
-												target="_blank"
-												rel="noreferrer"
+						<Stack
+							spacing="spacingS"
+							flexDirection="column"
+							alignItems="flex-start"
+							style={{ width: "100%" }}
+						>
+							<Flex alignItems="center" gap="spacingXs">
+								<Checkbox
+									id="select-all-upstream-roots"
+									isChecked={allSafeSelected}
+									isIndeterminate={someSafeSelected && !allSafeSelected}
+									isDisabled={safeRootIds.length === 0}
+									onChange={handleSelectAll}
+								/>
+								<Text
+									as="label"
+									htmlFor="select-all-upstream-roots"
+									fontWeight="fontWeightMedium"
+									fontSize="fontSizeS"
+								>
+									Used on {rootsLabel}
+								</Text>
+							</Flex>
+							<Stack
+								spacing="spacingXs"
+								flexDirection="column"
+								alignItems="stretch"
+								style={{ width: "100%" }}
+							>
+								{upstreamRoots.map((root) => {
+									const rootId = root.entry.sys.id;
+									return (
+										<Flex
+											key={rootId}
+											justifyContent="space-between"
+											alignItems="center"
+											gap="spacingXs"
+											style={{ width: "100%" }}
+										>
+											<Flex alignItems="center" gap="spacingXs" style={{ minWidth: 0 }}>
+												<Checkbox
+													id={`upstream-root-${rootId}`}
+													isChecked={selectedRootIds.has(rootId)}
+													isDisabled={!root.safe}
+													onChange={() =>
+														handleToggleRoot(rootId, root.safe)
+													}
+												/>
+												<a
+													href={getEditorEntry(root.entry.sys)}
+													target="_blank"
+													rel="noreferrer"
+													style={{
+														overflow: "hidden",
+														textOverflow: "ellipsis",
+														whiteSpace: "nowrap",
+													}}
+												>
+													{getEntrySlug(root.entry)}
+												</a>
+											</Flex>
+											<Badge
+												variant={root.safe ? "positive" : "warning"}
+												style={{ flexShrink: 0 }}
 											>
-												{getEntryLabel(root.entry)}
-											</a>
-											<Badge variant={root.safe ? "positive" : "warning"}>
 												{root.safe ? "safe" : "blocked"}
 											</Badge>
 										</Flex>
-									</ListItem>
-								))}
-							</List>
+									);
+								})}
+							</Stack>
 							{upstreamTruncated > 0 && (
 								<Text fontSize="fontSizeS" fontColor="gray600">
 									+ {upstreamTruncated} more not fully analysed
