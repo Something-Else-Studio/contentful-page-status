@@ -187,6 +187,8 @@ CONTENTFUL_ACCESS_TOKEN=xxx
 pnpm run upload-ci
 ```
 
+GitHub Actions (`.github/workflows/deploy.yml`) reads the pnpm version from the `packageManager` field in `package.json`; do not also set `version` on `pnpm/action-setup`.
+
 ## Troubleshooting
 
 **"Blocking: X need publishing" or missing reference?**
