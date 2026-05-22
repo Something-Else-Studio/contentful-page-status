@@ -4,7 +4,7 @@
 - **Always update documentation (CLAUDE.md and README.md) when making code changes.**
 - Ensure that technical details in the documentation match the implementation.
 
-This is a Contentful app that provides intelligent publishing capabilities for content with complex dependency structures. The app helps content editors ensure all referenced content is published before publishing the main entry.
+This is a Contentful app that provides intelligent publishing capabilities for content with complex dependency structures. The app helps content editors ensure all referenced content is published before publishing the main entry, and can also propagate changes made to a shared component upward to all pages/articles that use it.
 
 ## Core Functionality
 
@@ -13,6 +13,7 @@ The app's main purpose is to:
 2. Identify unpublished or out-of-date dependencies
 3. Enable batch publishing of all dependencies with one click
 4. Allow scheduling of content publication for future dates
+5. For non-root entries (components): find all root nodes that use this component and publish them after the component is published ("reverse publish")
 
 ## Tech Stack
 
@@ -28,26 +29,53 @@ The app's main purpose is to:
 ```
 /
 ├── src/
-│ ├── index.tsx           # App entry point and SDK initialization
-│ ├── App.tsx            # Location router component
+│ ├── index.tsx               # App entry point and SDK initialization
+│ ├── App.tsx                # Location router component
+│ ├── lib/
+│ │ ├── types.ts           # All shared interfaces and types
+│ │ ├── utils.ts           # Pure helpers: ROOT_CONTENT_TYPES, getEntryLabel, getEditorEntry, etc.
+│ │ ├── references.ts      # Fetch logic: fetchReferencesIteratively, fetchUpstreamRoots, buildReferenceInformation, cache
+│ │ └── publish.ts         # Publish orchestration: doPublish, doReversePublish
 │ ├── locations/
-│ │ ├── Sidebar.tsx    # Main app logic and UI (MOST IMPORTANT FILE)
-│ │ └── ConfigScreen.tsx # App configuration screen (boilerplate)
+│ │ ├── Sidebar.tsx        # React component only (~300 lines)
+│ │ └── ConfigScreen.tsx   # App configuration screen (boilerplate)
 │ └── components/
 │ └── LocalhostWarning.tsx # Dev environment warning
 ├── test/
-│ └── mocks/            # Test mocks for SDK and CMA
-├── package.json          # Dependencies and scripts
-├── vite.config.mts      # Vite configuration
-└── tsconfig.json        # TypeScript configuration
+│ └── mocks/               # Test mocks for SDK and CMA
+├── package.json             # Dependencies and scripts
+├── vite.config.mts         # Vite configuration
+└── tsconfig.json           # TypeScript configuration
 ```
 
-## Key File: Sidebar.tsx
+## Key Files
 
-This is where 90% of the app logic lives. Key functions:
-- `fetchReferencesIteratively()`: Recursively fetches all outgoing content dependencies
-- `doPublish()`: Handles both immediate and scheduled publishing of content and its dependencies.
-- `ROOT_CONTENT_TYPES`: Array of content types that stop traversal and must be published manually if referenced.
+### `src/lib/types.ts`
+All shared interfaces. Includes `IEntrySysLike` (minimal sys shape accepted by `buildReferenceInformation` — satisfies both `EntrySys` from app-sdk and `EntryProps.sys` from contentful-management without casting) and `IEditorLinkSys` (minimal shape for `getEditorEntry`).
+
+### `src/lib/references.ts`
+Core fetch logic:
+- `fetchReferencesIteratively()`: Downward BFS — recursively fetches all outgoing dependencies. Results cached for 60 s by entry ID.
+- `buildReferenceInformation()`: Builds `IReferenceInformation` from raw references. Parameter typed as `IEntrySysLike` (no unsafe casts needed).
+- `fetchUpstreamRoots()`: Upward BFS via `links_to_entry` CMA query. Returns all root-type ancestors plus a `failedLookups` count. Caps: Sidebar processes at most `UPSTREAM_ROOT_LIMIT` (10) roots.
+
+### `src/lib/publish.ts`
+- `doPublish()`: Immediate or scheduled publishing of a dependency set. Optional `overrideEntry` publishes a different entry than the current sidebar entry.
+- `doReversePublish()`: Publishes the component first, then each safe upstream root in sequence.
+
+### `src/lib/utils.ts`
+Pure, SDK-free helpers: `ROOT_CONTENT_TYPES`, `getEntryLabel`, `getLinksFromEntry`, `getMissingIds`, `getEditorEntry` (typed with `IEditorLinkSys` — no `EntityMetaSysProps` cast).
+
+### `src/locations/Sidebar.tsx`
+React component only. Uses two loading phases ("Scanning dependencies…" / "Finding pages that use this…") with distinct progress labels. Shows upstream roots grouped by content type with safe/blocked badges, truncated-count note, and failed-lookup warning.
+
+## Two Operating Modes
+
+The sidebar detects whether the current entry is a root node (`ROOT_CONTENT_TYPES.includes(contentTypeId)`):
+
+**Root mode** (article / page): Existing behaviour — traverse all dependencies downward, publish them, then publish the root.
+
+**Component mode** (any other content type): After fetching the component's own dependencies, `fetchUpstreamRoots()` is called to find all pages/articles that (directly or indirectly) reference this component. Each root is checked with `fetchReferencesIteratively` + `buildReferenceInformation`. The UI shows a "Used on N pages" section with safe/blocked status for each root. The publish button label changes to "Publish + N pages" and triggers `doReversePublish`.
 
 ## Development Commands
 

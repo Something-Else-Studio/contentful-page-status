@@ -37,6 +37,12 @@ The app appears in your entry editor sidebar and:
 - Identifies drafts, updated content, and out-of-date references
 - Shows exactly what needs publishing before your content goes live
 
+### 🔄 Reverse Publish (Components → Pages)
+- On a shared component? The app finds every page/article that uses it
+- Shows a "Used on N pages" list with safe/blocked status for each
+- One click publishes the component *and* all safe pages that reference it
+- Pages with unresolved dependencies are flagged and skipped automatically
+
 ### 🚀 One-Click Publishing
 - Publishes in the correct order: assets → entries → your main content
 - No more hunting for unpublished dependencies
@@ -157,10 +163,14 @@ Most modifications happen in `src/locations/Sidebar.tsx`. Refer to [CLAUDE.md](C
 
 ### Root Content Types
 
-By default, these content types are considered "Roots". They are checked for validity but not traversed, and must be published manually if referenced:
+By default, these content types are considered "Roots":
 - `article`, `page`
 
-Modify `ROOT_CONTENT_TYPES` in `Sidebar.tsx` to change this behavior.
+**When the sidebar is open on a root entry**: the app traverses all dependencies downward and publishes them before publishing the root.
+
+**When the sidebar is open on any other entry (a component)**: the app traverses upward to find all root-type ancestors and shows them in a "Used on N pages" section. Publishing the component also republishes all safe root ancestors.
+
+Modify `ROOT_CONTENT_TYPES` in `Sidebar.tsx` to change which content types are considered roots.
 
 ### Environment Variables (CI/CD)
 
