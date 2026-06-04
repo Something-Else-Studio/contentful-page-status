@@ -164,6 +164,75 @@ export async function doPublish(
 	return errors === 0;
 }
 
+/**
+ * Shallow republish of a single root page/article entry (no deep dependency walk).
+ * Used for the "publish component then republish the pages that use it" flow.
+ * This ensures the page's published snapshot picks up the newly published component
+ * (via its links) without forcing publish of the page's other draft/updated children.
+ */
+export async function republishRoot(
+	rootEntry: EntryProps<KeyValueMap>,
+	sdk: SidebarAppSDK,
+	setStatus: (status: IPublishStatus) => void,
+	scheduledTime?: string,
+): Promise<boolean> {
+	const total = 1;
+	let published = 0;
+	let errors = 0;
+	const errored: EntityMetaSysProps[] = [];
+	const scheduledActionIds: string[] = [];
+
+	const isScheduled = !!scheduledTime;
+
+	setStatus({
+		total,
+		published: 0,
+		errors: 0,
+		errored: [],
+		isScheduled,
+		scheduledTime,
+		scheduledActionIds,
+	});
+
+	const id = rootEntry.sys.id;
+	const spaceId = rootEntry.sys.space.sys.id;
+	const environmentId = rootEntry.sys.environment.sys.id;
+
+	try {
+		if (isScheduled && scheduledTime) {
+			const scheduleDate = new Date(scheduledTime);
+			const scheduledAction = await sdk.cma.scheduledActions.create(
+				{ spaceId },
+				{
+					environment: {
+						sys: { type: "Link", linkType: "Environment", id: environmentId },
+					},
+					entity: {
+						sys: { type: "Link", linkType: "Entry", id },
+					},
+					action: "publish",
+					scheduledFor: { datetime: scheduleDate.toISOString() },
+				},
+			);
+			if (scheduledAction?.sys?.id) {
+				scheduledActionIds.push(scheduledAction.sys.id);
+			}
+			published++;
+		} else {
+			await sdk.cma.entry.publish({ entryId: id }, rootEntry);
+			published++;
+		}
+	} catch (error) {
+		logError("Error republishing root entry:", error);
+		errors++;
+		errored.push(rootEntry.sys as EntityMetaSysProps);
+	}
+
+	setStatus({ total, published, errors, errored, isScheduled, scheduledTime, scheduledActionIds });
+
+	return errors === 0;
+}
+
 export async function doReversePublish(
 	information: IReferenceInformation,
 	upstreamRoots: IUpstreamRoot[],
@@ -178,13 +247,7 @@ export async function doReversePublish(
 	}
 
 	for (const root of upstreamRoots.filter((r) => r.safe)) {
-		await doPublish(
-			root.information,
-			sdk,
-			setStatus,
-			scheduledTime,
-			{ id: root.entry.sys.id, entry: root.entry },
-		);
+		await republishRoot(root.entry, sdk, setStatus, scheduledTime);
 	}
 
 	return true;

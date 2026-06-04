@@ -2,7 +2,38 @@ import type { EntryProps, KeyValueMap } from "contentful-management";
 import type { IEditorLinkSys } from "./types";
 import { logError } from "./debug";
 
-export const ROOT_CONTENT_TYPES = ["article", "page"];
+/**
+ * Top-level "page-like" content types that:
+ * - Have their own component trees (contents / topContent / indexPage*Content / alternativeContents etc.)
+ * - Are treated as roots for downward dependency scanning + publishing (root mode in sidebar)
+ * - Are the targets collected by upward `fetchUpstreamRoots` for the reverse "Used on N pages" flow
+ *
+ * When you edit one of these, the sidebar does a full downward scan of its references.
+ * When you edit a shared component/collection, these are the things that get surfaced
+ * so editors can selectively (shallow) republish the pages that embed the component
+ * after publishing the component itself.
+ *
+ * Sources / rationale:
+ * - se-core-product model (IBasePage, IBaseArticle, IBaseCustomType, etc. + converters/reval)
+ * - brightline / brightlifekids schemas + usage
+ * - pedestal / headwater schemas + their DEFAULT_CONTENT_TYPES in setup-contentful-webhooks.ts
+ * - sitemaps, preview, cms-edit resolves, revalidation handlers, etc. across the platform
+ *
+ * Explicitly excluded:
+ * - "template" (referenced *into* pages; pre/post wrappers)
+ * - "navigation" / "navigationItem" (purely structural)
+ * - "pageTest" (A/B test config metadata, not content)
+ */
+export const ROOT_CONTENT_TYPES = [
+  "article",
+  "articleType",
+  "customType",
+  "page",
+  "pageVariant",
+  "person",
+  "tag",
+  "tagType",
+];
 
 export function getEntryLabel(entry: EntryProps<KeyValueMap>): string {
 	if (!entry.fields) return "Untitled";

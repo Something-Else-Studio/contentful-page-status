@@ -15,7 +15,7 @@ import type {
 	IReferenceInformation,
 	IUpstreamRootsResult,
 } from "./types";
-import { ROOT_CONTENT_TYPES, getLinksFromEntry, getMissingIds } from "./utils";
+import { ROOT_CONTENT_TYPES as DEFAULT_ROOT_CONTENT_TYPES, getLinksFromEntry, getMissingIds } from "./utils";
 import { debugLog, debugError } from "./debug";
 
 const REF_CACHE_TTL_MS = 60_000;
@@ -26,6 +26,7 @@ const BATCH_SIZE = 50;
 export async function fetchReferencesIteratively(
 	sdk: SidebarAppSDK,
 	entryId: string,
+	rootContentTypes: string[] = [],
 	setProgress?: (progress: { processed: number; total: number }) => void,
 ): Promise<IAllReferences> {
 	const cached = refInfoCache.get(entryId);
@@ -39,6 +40,9 @@ export async function fetchReferencesIteratively(
 		errors: [],
 		processedEntryIds: new Set<string>(),
 	};
+
+	const rootContentTypesToUse =
+		rootContentTypes.length > 0 ? rootContentTypes : DEFAULT_ROOT_CONTENT_TYPES;
 
 	const entriesToProcess: string[] = [entryId];
 	const entriesQueued = new Set<string>([entryId]);
@@ -106,7 +110,7 @@ export async function fetchReferencesIteratively(
 						`Processing [${contentType}] ${entry.sys.id} ("${entry.sys.id}") - Draft: ${isDraft(entry)}, Published: ${isPublished(entry)}, Updated: ${isUpdated(entry)}`,
 					);
 
-					if (ROOT_CONTENT_TYPES.includes(contentType)) {
+					if (rootContentTypesToUse.includes(contentType)) {
 						debugLog(
 							`Stopping search at Root: [${contentType}] ${entry.sys.id}`,
 						);
@@ -308,8 +312,12 @@ export function buildReferenceInformation(
 export async function fetchUpstreamRoots(
 	sdk: SidebarAppSDK,
 	entryId: string,
+	rootContentTypes: string[] = [],
 	setProgress?: (p: { processed: number; total: number }) => void,
 ): Promise<IUpstreamRootsResult> {
+	const rootContentTypesToUse =
+		rootContentTypes.length > 0 ? rootContentTypes : DEFAULT_ROOT_CONTENT_TYPES;
+
 	const rootEntries = new Map<string, EntryProps<KeyValueMap>>();
 	const visited = new Set<string>();
 	const queued = new Set<string>([entryId]);
@@ -329,7 +337,7 @@ export async function fetchUpstreamRoots(
 
 			for (const entry of response.items) {
 				const ctId = entry.sys.contentType.sys.id;
-				if (ROOT_CONTENT_TYPES.includes(ctId)) {
+				if (rootContentTypesToUse.includes(ctId)) {
 					rootEntries.set(entry.sys.id, entry);
 				} else if (!queued.has(entry.sys.id)) {
 					queue.push(entry.sys.id);

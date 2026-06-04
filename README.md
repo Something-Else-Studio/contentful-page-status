@@ -21,7 +21,7 @@ Imagine you're publishing a landing page that contains:
 The app appears in your entry editor sidebar and:
 
 ```
-1. Scans your content     →  2. Shows status         →  3. One-click publish
+1. Click Refresh to scan  →  2. Shows status         →  3. One-click publish
    ┌─────────────┐             ┌─────────────────┐        ┌──────────────┐
    │ Your Page   │             │ 12 drafts       │        │ Publishing:  │
    │ ├─ Hero     │             │ 8 updated       │        │ ✓ 15 assets  │
@@ -29,6 +29,8 @@ The app appears in your entry editor sidebar and:
    │ └─ Footer   │             │ 2 errors        │        │ ✓ Your page  │
    └─────────────┘             └─────────────────┘        └──────────────┘
 ```
+
+The sidebar does not scan automatically when you open an entry — click **Refresh** to walk dependencies and see publish status.
 
 ## Key Features
 
@@ -38,12 +40,13 @@ The app appears in your entry editor sidebar and:
 - Shows exactly what needs publishing before your content goes live
 
 ### 🔄 Reverse Publish (Components → Pages)
-- On a shared component? The app finds every page/article that uses it
-- Shows a left-aligned "Used on N pages" list with slugs, safe/blocked badges, and checkboxes (up to 50 pages fully analysed; total count shown in header even if capped)
-- Select or deselect individual pages (or use select-all); blocked pages cannot be selected
-- One click publishes the component *and* selected safe pages that reference it
-- When the component is already up to date, you can still publish selected pages only
-- Pages with unresolved dependencies are flagged and skipped automatically
+- On a shared component or collection? The app finds every page/article that (directly or indirectly) references it via upward `links_to_entry` discovery
+- Shows a left-aligned "Used on N pages" list with slugs and checkboxes (up to 50 shown in the list; total count in header)
+- Select which pages to update (or select-all)
+- One click: deep-publishes the component/collection (and its own deps), *then* shallow-republishes just the selected page/article entries
+- This makes the pages pick up the newly published component in their live snapshots (and triggers their revalidation + search hooks) **without** forcing publish of the pages' other draft/updated children or sub-trees
+- When the component itself is already up to date you can still select pages to "touch" them
+- Much lighter than before (no expensive per-page full dependency scans during discovery)
 
 ### 🚀 One-Click Publishing
 - Publishes in the correct order: assets → entries → your main content
@@ -103,7 +106,7 @@ That's it! The app now appears in your entry editor sidebar.
 
 ### In the Entry Editor
 
-When editing any entry, look for the Page Status widget in the sidebar:
+When editing any entry, look for the Page Status widget in the sidebar. Click **Refresh** to scan dependencies — nothing runs until you do.
 
 - **Green checkmark**: All dependencies are published
 - **Orange number**: Shows count of items needing publication
@@ -162,20 +165,39 @@ src/index.tsx            # SDK initialization
 
 ### Making Changes
 
-Most modifications happen in `src/locations/Sidebar.tsx`. Refer to [CLAUDE.md](CLAUDE.md) for detailed function descriptions and logic flows.
+Most UI and behaviour changes happen in `src/locations/Sidebar.tsx`. The list of root content types (and the logic that treats them specially) lives in `src/lib/utils.ts`. Refer to [CLAUDE.md](CLAUDE.md) for detailed function descriptions and logic flows.
 
 ## Advanced Configuration
 
 ### Root Content Types
 
-By default, these content types are considered "Roots":
-- `article`, `page`
+By default, these content types are considered "Roots" (the full list + rationale is in `src/lib/utils.ts`):
 
-**When the sidebar is open on a root entry**: the app traverses all dependencies downward and publishes them before publishing the root.
+```ts
+["article", "articleType", "customType", "page", "pageVariant", "person", "tag", "tagType"]
+```
 
-**When the sidebar is open on any other entry (a component)**: the app traverses upward to find all root-type ancestors and shows them in a left-aligned "Used on N pages" section (slug labels, checkboxes). Publishing republishes selected safe root ancestors; when the component itself is up to date, publish is still available for selected pages only.
+These are the top-level page-like types that have their own component trees (contents / topContent / etc.) across the platform (core model + brightline + pedestal/headwater sites). They are the ones for which:
+- Editing them triggers full downward dependency scanning + publish (root mode).
+- Components used inside them are discovered via upward `links_to_entry` so editors can selectively shallow-republish the roots after updating a shared component (without forcing other drafts on those pages).
 
-Modify `ROOT_CONTENT_TYPES` in `Sidebar.tsx` to change which content types are considered roots.
+**When the sidebar is open on a root entry**: click Refresh to traverse all dependencies downward; publishing publishes them before the root.
+
+**When the sidebar is open on any other entry (a component)**: click Refresh to traverse upward and find all root-type ancestors; the app shows them in a left-aligned "Used on N pages" section (slug labels, checkboxes). Publishing does a deep publish of the component, then shallow-republishes the selected root page/article/etc. entries (to pick up the component without side-publishing their other pending children).
+
+### Configuring Root Content Types
+
+The list of root content types is configurable via the app's **configuration screen** (available after installing the app, or via the app definition in space settings):
+
+1. Go to the Page Status app configuration.
+2. In the "Root Content Types" field, enter a comma-separated list of content type IDs (e.g. `page,article,pageVariant,customType,articleType,tag,tagType,person`).
+3. Save the configuration.
+
+- Leave the field empty to use the built-in defaults (recommended for most sites).
+- Changes apply to the entry sidebar in that space/installation.
+- The sidebar code reads the value at runtime via `sdk.app.getParameters()` (with fallback to the defaults in `utils.ts`).
+
+The built-in defaults (and full rationale) are documented in `src/lib/utils.ts`. They are derived from the SE core platform content model and usage across brightline, pedestal, and other sites.
 
 ### Environment Variables (CI/CD)
 

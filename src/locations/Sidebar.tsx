@@ -20,10 +20,11 @@ import type {
 	IUpstreamRoot,
 } from "../lib/types";
 import {
-	ROOT_CONTENT_TYPES,
+	ROOT_CONTENT_TYPES as DEFAULT_ROOT_CONTENT_TYPES,
 	getEntrySlug,
 	getEditorEntry,
 } from "../lib/utils";
+import type { AppInstallationParameters } from "../lib/types";
 import {
 	fetchReferencesIteratively,
 	buildReferenceInformation,
@@ -84,9 +85,43 @@ const Sidebar = () => {
 	const [selectedRootIds, setSelectedRootIds] = useState<Set<string>>(
 		new Set(),
 	);
+	const [publishJustCompleted, setPublishJustCompleted] = useState(false);
 
-	// sdk is stable for the entire sidebar lifecycle; this value never changes
-	const isRootEntry = ROOT_CONTENT_TYPES.includes(sdk.entry.getSys().contentType.sys.id);
+	const entryId = sdk.entry.getSys().id;
+
+	// sdk is stable for the entire sidebar lifecycle; this value never changes.
+	// Read custom root content types from installation parameters (set via the ConfigScreen).
+	// Falls back to the built-in default list if not configured or empty.
+	const configuredRootContentTypes =
+		(sdk.parameters?.installation as AppInstallationParameters | undefined)
+			?.rootContentTypes ?? [];
+	const effectiveRootContentTypes =
+		configuredRootContentTypes.length > 0
+			? configuredRootContentTypes
+			: DEFAULT_ROOT_CONTENT_TYPES;
+
+	const isRootEntry = effectiveRootContentTypes.includes(
+		sdk.entry.getSys().contentType.sys.id,
+	);
+
+	const resetScanState = useCallback(() => {
+		setInformation(undefined);
+		setUpstreamRoots([]);
+		setUpstreamRootsByType({});
+		setUpstreamFailedLookups(0);
+		setUpstreamTruncated(0);
+		setSelectedRootIds(new Set());
+		setError(undefined);
+		setProgress({ processed: 0, total: 0, isComplete: false });
+		setPublishStatus(undefined);
+		setShowScheduleOptions(false);
+	}, []);
+
+	const finishPublishSuccess = useCallback(() => {
+		resetScanState();
+		setPublishJustCompleted(true);
+		setStatus("Idle");
+	}, [resetScanState]);
 
 	const updateProgress = useCallback(
 		(progressData: { processed: number; total: number }) => {
@@ -101,6 +136,8 @@ const Sidebar = () => {
 
 	const retrieveInformation = useCallback(async () => {
 		setStatus("Reading");
+		setError(undefined);
+		setPublishJustCompleted(false);
 		setProgress({ processed: 0, total: 1, isComplete: false });
 		setLoadingDetail(undefined);
 		setUpstreamRoots([]);
@@ -116,6 +153,7 @@ const Sidebar = () => {
 			const allReferences = await fetchReferencesIteratively(
 				sdk,
 				entrySys.id,
+				effectiveRootContentTypes,
 				updateProgress,
 			);
 
@@ -132,6 +170,7 @@ const Sidebar = () => {
 				const { roots: allRoots, failedLookups } = await fetchUpstreamRoots(
 					sdk,
 					entrySys.id,
+					effectiveRootContentTypes,
 					updateProgress,
 				);
 
@@ -148,37 +187,21 @@ const Sidebar = () => {
 				const truncated = Math.max(0, allRoots.length - UPSTREAM_ROOT_LIMIT);
 				setUpstreamTruncated(truncated);
 
-				const rootsToAnalyze = allRoots.slice(0, UPSTREAM_ROOT_LIMIT);
-				const rootInfos: IUpstreamRoot[] = [];
+				const rootsToShow = allRoots.slice(0, UPSTREAM_ROOT_LIMIT);
+				// Simplified: no per-root deep dependency scans / "safe" analysis.
+				// We do a lightweight upward discovery only, then shallow-republish
+				// selected roots after the component itself is published. This avoids
+				// side-publishing unrelated drafts on those pages and removes the
+				// expensive/brittle N x full-tree scans.
+				const rootInfos: IUpstreamRoot[] = rootsToShow.map((entry) => ({
+					entry,
+					safe: true,
+				}));
 
-				if (rootsToAnalyze.length > 0) {
+				if (rootsToShow.length > 0) {
 					setLoadingDetail(
-						`Found ${formatRootsLabelFromCounts(rootsByType)}. Checking each page's dependencies…`,
+						`Found ${formatRootsLabelFromCounts(rootsByType)}. Will republish selected pages after the component.`,
 					);
-					setProgress({
-						processed: 0,
-						total: rootsToAnalyze.length,
-						isComplete: false,
-					});
-
-					for (let i = 0; i < rootsToAnalyze.length; i++) {
-						const root = rootsToAnalyze[i];
-						setLoadingPhase(
-							`Analysing pages (${i + 1} of ${rootsToAnalyze.length})…`,
-						);
-						const refs = await fetchReferencesIteratively(sdk, root.sys.id);
-						const rootInfo = buildReferenceInformation(root.sys, refs);
-						rootInfos.push({
-							entry: root,
-							information: rootInfo,
-							safe: rootInfo.errorCount === 0,
-						});
-						setProgress({
-							processed: i + 1,
-							total: rootsToAnalyze.length,
-							isComplete: i + 1 === rootsToAnalyze.length,
-						});
-					}
 				} else {
 					setLoadingDetail("No pages or articles reference this entry.");
 				}
@@ -200,8 +223,10 @@ const Sidebar = () => {
 	}, [sdk]);
 
 	useEffect(() => {
-		retrieveInformation();
-	}, [retrieveInformation]);
+		resetScanState();
+		setStatus("Idle");
+		setPublishJustCompleted(false);
+	}, [entryId, resetScanState]);
 
 	useEffect(() => {
 		const tomorrow = new Date();
@@ -245,12 +270,12 @@ const Sidebar = () => {
 				: doPublish(information, sdk, setPublishStatus);
 		publish
 			.then((ok) => {
-				if (ok) retrieveInformation();
+				if (ok) finishPublishSuccess();
 			})
 			.catch((err) => logError("Error publishing", err));
 	}, [
 		information,
-		retrieveInformation,
+		finishPublishSuccess,
 		sdk,
 		isRootEntry,
 		upstreamRoots,
@@ -286,12 +311,12 @@ const Sidebar = () => {
 				: doPublish(information, sdk, setPublishStatus, scheduledDate);
 		publish
 			.then((ok) => {
-				if (ok) retrieveInformation();
+				if (ok) finishPublishSuccess();
 			})
 			.catch((err) => logError("Error scheduling publish", err));
 	}, [
 		information,
-		retrieveInformation,
+		finishPublishSuccess,
 		sdk,
 		scheduledDate,
 		isRootEntry,
@@ -307,8 +332,32 @@ const Sidebar = () => {
 		retrieveInformation();
 	}, [retrieveInformation]);
 
+	// ── Idle ─────────────────────────────────────────────────────────────────
+	if (status === "Idle") {
+		return (
+			<Box padding="spacingM">
+				<Stack spacing="spacingS" flexDirection="column" alignItems="flex-start">
+					{publishJustCompleted && (
+						<Note variant="positive">
+							Publish complete. Refresh to check status.
+						</Note>
+					)}
+					<Text fontWeight="fontWeightMedium">Dependency scan not run</Text>
+					<Text fontSize="fontSizeS" fontColor="gray600">
+						{isRootEntry
+							? "Scan this entry and its references to see publish status."
+							: "Scan this entry and its references to see publish status. For components, finding upstream pages may take a minute."}
+					</Text>
+					<Button variant="primary" onClick={handleRefresh}>
+						Refresh
+					</Button>
+				</Stack>
+			</Box>
+		);
+	}
+
 	// ── Loading ──────────────────────────────────────────────────────────────
-	if (status === "Idle" || status === "Reading") {
+	if (status === "Reading") {
 		const progressLabel =
 			progress.total > 1
 				? `${progress.processed} of ${progress.total}`
@@ -407,7 +456,12 @@ const Sidebar = () => {
 	if (error) {
 		return (
 			<Box padding="spacingM">
-				<Note variant="negative">Error processing: {error}</Note>
+				<Stack spacing="spacingS" flexDirection="column" alignItems="flex-start">
+					<Note variant="negative">Error processing: {error}</Note>
+					<Button onClick={handleRefresh} variant="secondary">
+						Refresh
+					</Button>
+				</Stack>
 			</Box>
 		);
 	}
@@ -650,19 +704,15 @@ const Sidebar = () => {
 													{getEntrySlug(root.entry)}
 												</a>
 											</Flex>
-											<Badge
-												variant={root.safe ? "positive" : "warning"}
-												style={{ flexShrink: 0 }}
-											>
-												{root.safe ? "safe" : "blocked"}
-											</Badge>
+											{/* Simplified reverse: no per-page deep "safe/blocked" analysis.
+											    All discovered roots are selectable for shallow republish. */}
 										</Flex>
 									);
 								})}
 							</Stack>
 							{upstreamTruncated > 0 && (
 								<Text fontSize="fontSizeS" fontColor="gray600">
-									+ {upstreamTruncated} more not fully analysed
+									+ {upstreamTruncated} more (not shown in list)
 								</Text>
 							)}
 							{upstreamFailedLookups > 0 && (
@@ -672,12 +722,9 @@ const Sidebar = () => {
 									some pages using this component may not be shown.
 								</Note>
 							)}
-							{upstreamRoots.some((r) => !r.safe) && (
-								<Note variant="warning">
-									Some root entries have unresolved dependencies and will not be
-									auto-published.
-								</Note>
-							)}
+							{/* Note about unresolved deps removed — with simplified reverse we do
+							    lightweight discovery + shallow root republish only (no deep tree
+							    "safe" checks on the pages). Other draft changes on a page stay draft. */}
 						</Stack>
 					</Box>
 				)}
