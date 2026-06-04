@@ -17,6 +17,9 @@ function privateNetworkAccess(): Plugin {
 
 export default defineConfig({
   plugins: [react(), privateNetworkAccess()],
+  optimizeDeps: {
+    include: ['@contentful/f36-icons'],
+  },
   test: {
     globals: true,
     environment: 'jsdom',

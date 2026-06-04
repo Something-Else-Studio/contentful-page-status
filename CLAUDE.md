@@ -72,7 +72,15 @@ Core fetch logic:
 Pure, SDK-free helpers: `ROOT_CONTENT_TYPES`, `getEntryLabel`, `getEntrySlug`, `getLinksFromEntry`, `getMissingIds`, `getEditorEntry` (typed with `IEditorLinkSys` — no `EntityMetaSysProps` cast).
 
 ### `src/locations/Sidebar.tsx`
-React component only. Opens in an **Idle** state — no dependency scan runs until the user clicks **Refresh**. After Refresh, uses two loading phases ("Scanning dependencies…" / "Finding pages that use this…") with distinct progress labels and detail text. For components, upstream discovery is lightweight (just the `links_to_entry` BFS; no per-root deep tree analysis). Shows upstream roots left-aligned with slug labels, per-page checkboxes (plus select-all), truncated-count note (when more than 50 roots exist), and failed-lookup warning. (Badges are present but all treated as selectable.) Up-to-date status reads "This entry is up to date" (not dependency count, which is 0 for leaf components). After a successful publish, returns to Idle with a success note; the user must Refresh to rescan. Switching entries resets to Idle and clears stale scan data.
+React component only (~810 lines). Opens in an **Idle** state — no dependency scan runs until the user clicks **Refresh**. After Refresh, uses two loading phases ("Scanning dependencies…" / "Finding pages that use this…") with distinct progress labels and detail text. For components, upstream discovery is lightweight (just the `links_to_entry` BFS; no per-root deep tree analysis). Shows upstream roots left-aligned with slug labels, per-page checkboxes (plus select-all), truncated-count note (when more than 50 roots exist), and failed-lookup warning. (Badges are present but all treated as selectable.)
+
+When dependencies need publishing (no errors):
+- The action row shows the main Publish (or "Publish + N pages") / Schedule... buttons stacked on the left and a refresh icon-only `IconButton` (with `ArrowClockwiseIcon`) on the right (non-wrapping full-width row).
+- Below the action row, in smaller font (0.8em): a full-width non-wrapping "N items need publishing:" header (block, nowrap), followed directly below it by the vertical list of specific draft/updated entries and assets.
+- Each item in the list is a left-aligned editor link + right-aligned `Badge` ("draft" warning or "changed" primary), rendered as a `Stack` of `Flex` rows (consistent row style with the "Used on" upstream list; no `<List>` bullets).
+- The list appears below the "N items need publishing" label as requested for visual hierarchy.
+
+Up-to-date status reads "This entry is up to date" (not dependency count, which is 0 for leaf components). After a successful publish, returns to Idle with a success note; the user must Refresh to rescan. Switching entries resets to Idle and clears stale scan data.
 
 ## Two Operating Modes
 

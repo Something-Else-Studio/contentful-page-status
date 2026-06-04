@@ -9,6 +9,7 @@
   "dependencies": {
     "@contentful/app-sdk": "^4.57.0",
     "@contentful/f36-components": "6.8.0",
+    "@contentful/f36-icons": "6.8.0",
     "@contentful/f36-tokens": "6.1.2",
     "@contentful/react-apps-toolkit": "2.0.1",
     "@emotion/css": "^11.13.5",

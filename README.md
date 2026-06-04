@@ -14,7 +14,7 @@ Imagine you're publishing a landing page that contains:
 
 **Without this app**: You need to manually find and publish each of these 55+ items in the correct order before publishing your page. Miss one? Your live site has broken content.
 
-**With this app**: See "55 items need publishing" → Click "Publish all" → Done. ✅
+**With this app**: See "55 items need publishing:" followed by the vertical list of specific drafts/updated items (each with link + draft/changed badge) → Click "Publish all" → Done. ✅
 
 ## How It Works
 
@@ -115,6 +115,7 @@ When editing any entry, look for the Page Status widget in the sidebar. Click **
 ### Publishing Options
 
 1. **"Publish all" button**:
+   - Below the buttons, shows "N items need publishing:" header + vertical list of the specific draft/updated entries and assets (editor links + "draft"/"changed" badges on the right, smaller font)
    - Instantly publishes all dependencies
    - Shows progress (e.g., "Publishing 12 of 25...")
    - Confirms when complete

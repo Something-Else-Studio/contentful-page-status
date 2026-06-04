@@ -4,6 +4,7 @@ import {
 	Button,
 	Checkbox,
 	Flex,
+	IconButton,
 	List,
 	ListItem,
 	Note,
@@ -11,6 +12,7 @@ import {
 	Stack,
 	Box,
 } from "@contentful/f36-components";
+import { ArrowClockwiseIcon } from '@contentful/f36-icons';
 import type { SidebarAppSDK } from "@contentful/app-sdk";
 import { useSDK } from "@contentful/react-apps-toolkit";
 import type { EntityMetaSysProps } from "contentful-management";
@@ -21,6 +23,7 @@ import type {
 } from "../lib/types";
 import {
 	ROOT_CONTENT_TYPES as DEFAULT_ROOT_CONTENT_TYPES,
+	getEntryLabel,
 	getEntrySlug,
 	getEditorEntry,
 } from "../lib/utils";
@@ -594,31 +597,90 @@ const Sidebar = () => {
 								{selectionOnlyPublish && (
 									<Note variant="positive">This entry is up to date</Note>
 								)}
-								{publishNeedCount > 0 && information.errorCount === 0 && (
-									<Text>
-										{publishNeedCount} item
-										{publishNeedCount === 1 ? "" : "s"} need
-										{publishNeedCount === 1 ? "s" : ""} publishing
-									</Text>
-								)}
 								{information.errorCount > 0 && (
 									<Note variant="negative">
 										Blocking: {summaryText || "Items"} need publishing.
 									</Note>
 								)}
 								{information.errorCount === 0 && (
-									<Stack spacing="spacingS">
-										<Button variant="primary" onClick={handlePublish}>
-											{publishButtonLabel}
-										</Button>
-										<Button variant="secondary" onClick={toggleScheduleOptions}>
-											Schedule...
-										</Button>
-									</Stack>
+									<Flex alignItems="flex-start" gap="spacingS" style={{ width: "100%" }}>
+										<Stack spacing="spacingS" style={{ flexGrow: 1 }}>
+											<Button variant="primary" onClick={handlePublish}>
+												{publishButtonLabel}
+											</Button>
+											<Button variant="secondary" onClick={toggleScheduleOptions}>
+												Schedule...
+											</Button>
+										</Stack>
+										<IconButton
+											variant="secondary"
+											icon={<ArrowClockwiseIcon />}
+											aria-label="Refresh"
+											onClick={handleRefresh}
+										/>
+									</Flex>
 								)}
-								<Button onClick={handleRefresh} variant="secondary" size="small">
-									Refresh
-								</Button>
+								{publishNeedCount > 0 && information.errorCount === 0 && (
+									<Box style={{ width: "100%", fontSize: "0.8em", marginTop: "4px" }}>
+										<Text fontSize="fontSizeS" style={{ width: "100%", display: "block", whiteSpace: "nowrap" }}>
+											{publishNeedCount} item{publishNeedCount === 1 ? "" : "s"} need{publishNeedCount === 1 ? "s" : ""} publishing:
+										</Text>
+										<Stack spacing="spacingXs" style={{ width: "100%", marginTop: "2px" }}>
+											{information.draftEntries.map((entry) => (
+												<Flex key={entry.sys.id} justifyContent="space-between" alignItems="center" style={{ width: "100%" }}>
+													<a
+														href={getEditorEntry(entry.sys)}
+														target="_blank"
+														rel="noreferrer"
+														style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+													>
+														{getEntryLabel(entry)}
+													</a>
+													<Badge variant="warning">draft</Badge>
+												</Flex>
+											))}
+											{information.updatedEntries.map((entry) => (
+												<Flex key={entry.sys.id} justifyContent="space-between" alignItems="center" style={{ width: "100%" }}>
+													<a
+														href={getEditorEntry(entry.sys)}
+														target="_blank"
+														rel="noreferrer"
+														style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+													>
+														{getEntryLabel(entry)}
+													</a>
+													<Badge variant="primary">changed</Badge>
+												</Flex>
+											))}
+											{information.draftAssets.map((asset) => (
+												<Flex key={asset.sys.id} justifyContent="space-between" alignItems="center" style={{ width: "100%" }}>
+													<a
+														href={getEditorEntry(asset.sys)}
+														target="_blank"
+														rel="noreferrer"
+														style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+													>
+														{getEntryLabel(asset as any)}
+													</a>
+													<Badge variant="warning">draft</Badge>
+												</Flex>
+											))}
+											{information.updatedAssets.map((asset) => (
+												<Flex key={asset.sys.id} justifyContent="space-between" alignItems="center" style={{ width: "100%" }}>
+													<a
+														href={getEditorEntry(asset.sys)}
+														target="_blank"
+														rel="noreferrer"
+														style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+													>
+														{getEntryLabel(asset as any)}
+													</a>
+													<Badge variant="primary">changed</Badge>
+												</Flex>
+											))}
+										</Stack>
+									</Box>
+								)}
 							</>
 						)}
 					</Stack>
