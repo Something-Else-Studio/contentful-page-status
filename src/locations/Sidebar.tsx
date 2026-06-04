@@ -32,6 +32,7 @@ import {
 	fetchReferencesIteratively,
 	buildReferenceInformation,
 	fetchUpstreamRoots,
+	clearReferenceCache,
 } from "../lib/references";
 import { doPublish, doReversePublish } from "../lib/publish";
 import { logError } from "../lib/debug";
@@ -121,10 +122,16 @@ const Sidebar = () => {
 	}, []);
 
 	const finishPublishSuccess = useCallback(() => {
+		// Bust the references cache (for this sidebar entry) so that the post-publish
+		// "Refresh to check status" (or any subsequent manual Refresh) gets fresh data.
+		// This prevents the scenario where a quick Refresh hits the 60s TTL, still sees
+		// "needs publishing", and a second Publish attempt gets VersionMismatch (409)
+		// because the entity objects carried stale sys.version values.
+		clearReferenceCache(entryId);
 		resetScanState();
 		setPublishJustCompleted(true);
 		setStatus("Idle");
-	}, [resetScanState]);
+	}, [resetScanState, entryId]);
 
 	const updateProgress = useCallback(
 		(progressData: { processed: number; total: number }) => {
@@ -150,6 +157,13 @@ const Sidebar = () => {
 
 		try {
 			const entrySys = sdk.entry.getSys();
+
+			// Ensure a manual Refresh (including the "Refresh to check status" the user is
+			// told to do after publish) always gets a fresh dependency scan. Combined with
+			// the clear inside finishPublishSuccess this defeats the 60s refInfoCache that
+			// was causing post-publish scans to report stale "N items need publishing" and
+			// subsequent Publish attempts to hit VersionMismatch with old entity versions.
+			clearReferenceCache(entrySys.id);
 
 			setLoadingPhase("Scanning dependencies...");
 			setLoadingDetail("Checking this entry and its references…");
@@ -273,9 +287,17 @@ const Sidebar = () => {
 				: doPublish(information, sdk, setPublishStatus);
 		publish
 			.then((ok) => {
-				if (ok) finishPublishSuccess();
+				// Always finish (reset + clear cache + Idle note) so we never get stuck
+				// in the Publishing UI (even when per-item publish failed with e.g. VersionMismatch).
+				// The Publishing note (with errored list + recovery Refresh button) will have
+				// already informed the user; on settle we return to Idle so they can Refresh
+				// immediately with fresh data.
+				finishPublishSuccess();
 			})
-			.catch((err) => logError("Error publishing", err));
+			.catch((err) => {
+				logError("Error publishing", err);
+				finishPublishSuccess();
+			});
 	}, [
 		information,
 		finishPublishSuccess,
@@ -314,9 +336,17 @@ const Sidebar = () => {
 				: doPublish(information, sdk, setPublishStatus, scheduledDate);
 		publish
 			.then((ok) => {
-				if (ok) finishPublishSuccess();
+				// Always finish (reset + clear cache + Idle note) so we never get stuck
+				// in the Publishing UI (even when per-item publish failed with e.g. VersionMismatch).
+				// The Publishing note (with errored list + recovery Refresh button) will have
+				// already informed the user; on settle we return to Idle so they can Refresh
+				// immediately with fresh data.
+				finishPublishSuccess();
 			})
-			.catch((err) => logError("Error scheduling publish", err));
+			.catch((err) => {
+				logError("Error scheduling publish", err);
+				finishPublishSuccess();
+			});
 	}, [
 		information,
 		finishPublishSuccess,
@@ -447,6 +477,12 @@ const Sidebar = () => {
 										</ListItem>
 									))}
 								</List>
+								{/* Recovery button so the user is never stuck in the Publishing
+								    note (as happened with VersionMismatch). finish* paths now
+								    also guarantee we leave "Publishing" state. */}
+								<Button onClick={handleRefresh} variant="secondary">
+									Refresh
+								</Button>
 							</>
 						)}
 					</Stack>

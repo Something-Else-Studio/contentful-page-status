@@ -21,6 +21,20 @@ import { debugLog, debugError } from "./debug";
 const REF_CACHE_TTL_MS = 60_000;
 const refInfoCache = new Map<string, { ts: number; refs: IAllReferences }>();
 
+/**
+ * Clears the 60s reference info cache for a specific entry (or all if no id given).
+ * Called after publish (success or partial) and at the start of every manual Refresh
+ * so that "Refresh to check status" after a publish always sees the true state
+ * and avoids VersionMismatch (stale sys.version) on subsequent publish attempts.
+ */
+export function clearReferenceCache(entryId?: string): void {
+	if (entryId) {
+		refInfoCache.delete(entryId);
+	} else {
+		refInfoCache.clear();
+	}
+}
+
 const BATCH_SIZE = 50;
 
 export async function fetchReferencesIteratively(

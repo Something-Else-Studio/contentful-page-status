@@ -60,7 +60,7 @@ All shared interfaces. Includes `IEntrySysLike` (minimal sys shape accepted by `
 
 ### `src/lib/references.ts`
 Core fetch logic:
-- `fetchReferencesIteratively()`: Downward BFS — recursively fetches all outgoing dependencies. Results cached for 60 s by entry ID.
+- `fetchReferencesIteratively()`: Downward BFS — recursively fetches all outgoing dependencies. Results cached for 60 s by entry ID. Cache is explicitly cleared (via exported `clearReferenceCache(entryId)`) on publish completion (in `finishPublishSuccess`) and at the start of every manual `retrieveInformation`/`Refresh` (including the "Refresh to check status" note). This ensures post-publish scans see the true state and prevents VersionMismatch (stale `sys.version` in the entity objects passed to CMA publish) on re-attempts.
 - `buildReferenceInformation()`: Builds `IReferenceInformation` from raw references. Parameter typed as `IEntrySysLike` (no unsafe casts needed).
 - `fetchUpstreamRoots()`: Upward BFS via `links_to_entry` CMA query. Returns all root-type ancestors plus a `failedLookups` count. Caps: Sidebar shows at most `UPSTREAM_ROOT_LIMIT` (50) in the checkbox list (discovery itself walks all); the "Used on" header reflects the total discovered count. No longer performs full per-root downward scans.
 
@@ -80,7 +80,7 @@ When dependencies need publishing (no errors):
 - Each item in the list is a left-aligned editor link + right-aligned `Badge` ("draft" warning or "changed" primary), rendered as a `Stack` of `Flex` rows (consistent row style with the "Used on" upstream list; no `<List>` bullets).
 - The list appears below the "N items need publishing" label as requested for visual hierarchy.
 
-Up-to-date status reads "This entry is up to date" (not dependency count, which is 0 for leaf components). After a successful publish, returns to Idle with a success note; the user must Refresh to rescan. Switching entries resets to Idle and clears stale scan data.
+Up-to-date status reads "This entry is up to date" (not dependency count, which is 0 for leaf components). After any publish (success or with per-item errors such as VersionMismatch), the flow always returns to Idle with the "Publish complete. Refresh to check status." note (the Publishing UI is never left stuck; a Refresh button is rendered in the note when `publishStatus.errors > 0`). The references cache is cleared on publish completion and on the next Refresh; entities are re-fetched immediately before each CMA publish call. The user must Refresh to rescan after the note. Switching entries resets to Idle and clears stale scan data.
 
 ## Two Operating Modes
 
@@ -129,6 +129,8 @@ The publishing logic in `doPublish()` follows this order:
 4. Handle errors and show appropriate messages
 
 For the component reverse flow (`doReversePublish` + `republishRoot`): deep `doPublish` the component (unless `skipComponentPublish`), *then* for each selected root call `republishRoot` which does a *shallow* publish/schedule of just that page/article entry (no dep walk). This is the refined "publish shared thing then republish the pages that embed it" behaviour (lighter, no side effects on sibling children).
+
+Internals for robustness (added to address VersionMismatch + stuck UI after publish): `publishImmediately` and `republishRoot` now perform a fresh `sdk.cma.xxx.get(...)` immediately before the publish (non-scheduled paths) so the object carries the current `sys.version`; `doReversePublish` now aggregates success from every `republishRoot` and returns an accurate `ok` boolean; Sidebar promise handlers always settle to Idle (via `finishPublishSuccess` which also clears the references cache) regardless of `ok`. A recovery Refresh button appears in the Publishing note on errors. See also the cache description in references.ts.
 
 ### Updating Root Content Types
 
@@ -201,10 +203,12 @@ await sdk.cma.scheduledAction.create({
 
 The app handles several error scenarios:
 - Missing references (shows as errors in UI)
-- Publishing failures (caught and displayed to user)
+- Publishing failures (e.g. VersionMismatch 409 from stale `sys.version` on CMA publish, or other errors) — caught per-item, shown live in the Publishing progress Note (with list of errored ids + a Refresh recovery button), and the promise always settles so the UI returns to the Idle "Publish complete. Refresh to check status." note (never stuck). Cache is cleared and fresh entity GETs are done immediately before publish to mitigate.
 - API rate limits (should implement retry logic if needed)
 
 When an entry or asset is reported as missing or inaccessible, the app tracks which entry (and content type) referenced it. "Entry not found" and "Missing asset" console messages include this referrer info (e.g. `Entry not found: <id> (referenced from: Entry <refId> [contentType])`) so you can locate the broken reference. The same referrer data is attached to the error object as `details.referrers` for potential UI use.
+
+Publish-time errors such as `VersionMismatch` (HTTP 409 with `X-Contentful-Version` header) are logged via `logError` (always on) and surfaced in the in-progress UI; they no longer leave the sidebar stuck because the publish promise is always settled back to Idle and the references cache + pre-publish GETs protect against the common stale-version case after a prior publish + "Refresh to check".
 
 ## Performance Considerations
 

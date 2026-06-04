@@ -78,9 +78,11 @@ export async function doPublish(
 	) => {
 		try {
 			if (entityType === "asset") {
-				await sdk.cma.asset.publish({ assetId: id }, entity);
+				const latest = await sdk.cma.asset.get({ assetId: id });
+				await sdk.cma.asset.publish({ assetId: id }, latest);
 			} else {
-				await sdk.cma.entry.publish({ entryId: id }, entity);
+				const latest = await sdk.cma.entry.get({ entryId: id });
+				await sdk.cma.entry.publish({ entryId: id }, latest);
 			}
 			return true;
 		} catch (error) {
@@ -219,7 +221,8 @@ export async function republishRoot(
 			}
 			published++;
 		} else {
-			await sdk.cma.entry.publish({ entryId: id }, rootEntry);
+			const latest = await sdk.cma.entry.get({ entryId: id });
+			await sdk.cma.entry.publish({ entryId: id }, latest);
 			published++;
 		}
 	} catch (error) {
@@ -241,14 +244,17 @@ export async function doReversePublish(
 	scheduledTime?: string,
 	options?: { skipComponentPublish?: boolean },
 ): Promise<boolean> {
+	let ok = true;
+
 	if (!options?.skipComponentPublish) {
-		const ok = await doPublish(information, sdk, setStatus, scheduledTime);
-		if (!ok) return false;
+		const componentOk = await doPublish(information, sdk, setStatus, scheduledTime);
+		if (!componentOk) ok = false;
 	}
 
 	for (const root of upstreamRoots.filter((r) => r.safe)) {
-		await republishRoot(root.entry, sdk, setStatus, scheduledTime);
+		const rootOk = await republishRoot(root.entry, sdk, setStatus, scheduledTime);
+		if (!rootOk) ok = false;
 	}
 
-	return true;
+	return ok;
 }

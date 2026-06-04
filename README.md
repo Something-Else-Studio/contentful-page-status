@@ -118,7 +118,7 @@ When editing any entry, look for the Page Status widget in the sidebar. Click **
    - Below the buttons, shows "N items need publishing:" header + vertical list of the specific draft/updated entries and assets (editor links + "draft"/"changed" badges on the right, smaller font)
    - Instantly publishes all dependencies
    - Shows progress (e.g., "Publishing 12 of 25...")
-   - Confirms when complete
+   - On any completion (including per-item errors such as VersionMismatch) the UI returns to the Idle note "Publish complete. Refresh to check status." The references cache is cleared automatically on publish and the next Refresh always performs a fresh scan (preventing stale "needs publishing" reports and VersionMismatch on re-publish). Per-item publish errors are shown live in the progress note; a Refresh button is available for recovery so the sidebar is never stuck.
 
 2. **"Schedule publishing" button**:
    - Opens date/time picker
@@ -131,7 +131,7 @@ The app categorizes content as:
 - **Draft**: Never published (new content)
 - **Updated**: Has unpublished changes
 - **Out of date**: Published after the parent (may cause issues)
-- **Errors**: Broken or inaccessible references (open the browser console to see which entry referenced a missing item)
+- **Errors**: Broken or inaccessible references (open the browser console to see which entry referenced a missing item). Publish-time errors (e.g. VersionMismatch from the Contentful API) are shown in the in-progress Publishing UI with the list of affected items and a recovery Refresh button.
 
 ## Development
 

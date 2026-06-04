@@ -35,6 +35,9 @@ vi.mock('../lib/references', () => ({
     draftAssets: [],
     updatedAssets: [],
   }),
+  // clear is called by retrieveInformation and finishPublishSuccess; provide a no-op
+  // so tests that trigger Refresh / publish paths don't get "clearReferenceCache is not a function".
+  clearReferenceCache: vi.fn(),
 }));
 
 const mockSdk: Partial<SidebarAppSDK> = {
