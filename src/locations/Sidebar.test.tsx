@@ -22,6 +22,7 @@ vi.mock('../lib/references', () => ({
   fetchUpstreamRoots: vi.fn().mockResolvedValue({ roots: [], failedLookups: 0 }),
   buildReferenceInformation: vi.fn().mockReturnValue({
     published: true,
+    warnings: [],
     errors: [],
     errorCount: 0,
     entryCount: 0,
@@ -145,5 +146,100 @@ describe('Sidebar root content types from parameters', () => {
         expect.any(Function)
       );
     });
+  });
+});
+
+describe('Sidebar scan results rendering', () => {
+  const sys = (id: string) => ({
+    id,
+    type: 'Entry',
+    space: { sys: { id: 'sp' } },
+    environment: { sys: { id: 'env' } },
+  });
+  const baseInfo = {
+    published: false,
+    warnings: [],
+    errors: [],
+    errorCount: 0,
+    entryCount: 1,
+    draftEntries: [] as any[],
+    updatedEntries: [] as any[],
+    draftEntryCount: 0,
+    updatedEntryCount: 0,
+    assetCount: 0,
+    draftAssets: [],
+    updatedAssets: [],
+    draftAssetCount: 0,
+    updatedAssetCount: 0,
+  };
+  const draftHero = {
+    sys: sys('hero1'),
+    fields: { title: { 'en-US': 'Hero banner' } },
+  };
+
+  async function refresh(info: any) {
+    (mockSdk.parameters!.installation as any) = {};
+    (mockSdk.entry!.getSys as any).mockReturnValue({
+      id: 'page-1',
+      contentType: { sys: { id: 'page' } },
+      publishedVersion: 1,
+      version: 3,
+    });
+    (references.buildReferenceInformation as any).mockReturnValue(info);
+    render(<Sidebar />);
+    fireEvent.click(screen.getByRole('button', { name: /Refresh/i }));
+  }
+
+  it('names the blocking entry with label, slug and link, and still lists items needing publishing', async () => {
+    await refresh({
+      ...baseInfo,
+      errorCount: 1,
+      errors: [
+        {
+          sys: sys('bad1'),
+          details: {
+            label: 'Broken page',
+            slug: 'broken',
+            errors: [{ message: 'Entry not found or inaccessible' }],
+            referrers: [{ referrerEntryId: 'x', referrerContentType: 'page', referrerLabel: 'Home' }],
+          },
+        },
+      ],
+      draftEntries: [draftHero],
+      draftEntryCount: 1,
+    });
+
+    const link = await screen.findByRole('link', { name: 'Broken page' });
+    expect(link).toHaveAttribute('href', 'https://app.contentful.com/spaces/sp/environments/env/entries/bad1');
+    expect(screen.getByText(/\(\/broken\)/)).toBeInTheDocument();
+    expect(screen.getByText(/linked from Home/)).toBeInTheDocument();
+    // the items list still renders alongside the error
+    expect(screen.getByText(/1 item needs publishing/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Hero banner' })).toBeInTheDocument();
+    // Publish is unavailable while true blockers remain
+    expect(screen.queryByRole('button', { name: /Publish/i })).not.toBeInTheDocument();
+  });
+
+  it('renders warnings and keeps Publish available when there are no hard errors', async () => {
+    await refresh({
+      ...baseInfo,
+      draftEntries: [draftHero],
+      draftEntryCount: 1,
+      warnings: [
+        { kind: 'unpublished', id: 'p2', label: 'Draft page', slug: 'draft-page', reason: 'Linked page is not published', sys: sys('p2') },
+        {
+          kind: 'duplicate-slug', id: 'p1', label: 'Mine', slug: 'same',
+          reason: 'Slug "same" is also used by another page', sys: sys('p1'),
+          related: [{ id: 'p9', label: 'Dupe page', slug: 'same', sys: sys('p9') }],
+        },
+      ],
+    });
+
+    expect(await screen.findByText(/does not block publishing/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Draft page' })).toBeInTheDocument();
+    expect(screen.getByText(/Linked page is not published/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Dupe page' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publish Now' })).toBeEnabled();
+    expect(screen.queryByText(/Blocking:/)).not.toBeInTheDocument();
   });
 });

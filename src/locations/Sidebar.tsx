@@ -17,8 +17,10 @@ import type { SidebarAppSDK } from "@contentful/app-sdk";
 import { useSDK } from "@contentful/react-apps-toolkit";
 import type { EntityMetaSysProps } from "contentful-management";
 import type {
+	IEditorLinkSys,
 	IProgressStatus,
 	IPublishStatus,
+	IScanWarning,
 	IUpstreamRoot,
 } from "../lib/types";
 import {
@@ -63,6 +65,12 @@ function formatRootsLabel(roots: IUpstreamRoot[]): string {
 	return formatRootsLabelFromCounts(rootsByType);
 }
 
+function safeEditorLink(sys: IEditorLinkSys): string {
+	return sys?.space?.sys?.id && sys?.environment?.sys?.id
+		? getEditorEntry(sys)
+		: "";
+}
+
 const Sidebar = () => {
 	const sdk = useSDK<SidebarAppSDK>();
 	const [status, setStatus] = useState<Status>("Idle");
@@ -85,6 +93,7 @@ const Sidebar = () => {
 		Record<string, number>
 	>({});
 	const [upstreamFailedLookups, setUpstreamFailedLookups] = useState(0);
+	const [upstreamWarnings, setUpstreamWarnings] = useState<IScanWarning[]>([]);
 	const [upstreamTruncated, setUpstreamTruncated] = useState(0);
 	const [selectedRootIds, setSelectedRootIds] = useState<Set<string>>(
 		new Set(),
@@ -113,6 +122,7 @@ const Sidebar = () => {
 		setUpstreamRoots([]);
 		setUpstreamRootsByType({});
 		setUpstreamFailedLookups(0);
+		setUpstreamWarnings([]);
 		setUpstreamTruncated(0);
 		setSelectedRootIds(new Set());
 		setError(undefined);
@@ -153,6 +163,7 @@ const Sidebar = () => {
 		setUpstreamRoots([]);
 		setUpstreamRootsByType({});
 		setUpstreamFailedLookups(0);
+		setUpstreamWarnings([]);
 		setUpstreamTruncated(0);
 
 		try {
@@ -184,7 +195,11 @@ const Sidebar = () => {
 				);
 				setProgress({ processed: 0, total: 1, isComplete: false });
 
-				const { roots: allRoots, failedLookups } = await fetchUpstreamRoots(
+				const {
+					roots: allRoots,
+					failedLookups,
+					warnings: rootWarnings,
+				} = await fetchUpstreamRoots(
 					sdk,
 					entrySys.id,
 					effectiveRootContentTypes,
@@ -192,6 +207,7 @@ const Sidebar = () => {
 				);
 
 				setUpstreamFailedLookups(failedLookups);
+				setUpstreamWarnings(rootWarnings ?? []);
 				const rootsByType = allRoots.reduce(
 					(acc, root) => {
 						const ct = root.sys.contentType.sys.id;
@@ -566,20 +582,30 @@ const Sidebar = () => {
 			});
 		};
 
-		const errorGroups = information.errors?.reduce(
-			(acc, err) => {
-				const type =
-					(err.details as Record<string, unknown>)?.contentType || "other";
-				acc[String(type)] = (acc[String(type)] || 0) + 1;
-				return acc;
-			},
-			{} as Record<string, number>,
-		);
-		const summaryText = errorGroups
-			? Object.entries(errorGroups)
-					.map(([type, count]) => `${count} ${type}${count !== 1 ? "s" : ""}`)
-					.join(" and ")
-			: "";
+		// Each blocking error names the entity: label, slug, and an editor link.
+		const blockers = (information.errors ?? []).map((err) => {
+			const details = (err.details ?? {}) as {
+				label?: string;
+				slug?: string;
+				errors?: { message?: string }[];
+				referrers?: { referrerLabel?: string; referrerEntryId: string }[];
+			};
+			const sys = err.sys as unknown as IEditorLinkSys;
+			return {
+				id: sys.id,
+				label: details.label || `${sys.type} ${sys.id}`,
+				slug: details.slug ?? "",
+				message: details.errors?.[0]?.message ?? "Cannot be published",
+				referrers: (details.referrers ?? [])
+					.map((r) => r.referrerLabel || r.referrerEntryId)
+					.join(", "),
+				href: safeEditorLink(sys),
+			};
+		});
+		const warnings = [
+			...(information.warnings ?? []),
+			...upstreamWarnings,
+		];
 
 		return (
 			<Box>
@@ -635,8 +661,40 @@ const Sidebar = () => {
 								)}
 								{information.errorCount > 0 && (
 									<Note variant="negative">
-										Blocking: {summaryText || "Items"} need publishing.
+										<Stack
+											spacing="spacingXs"
+											flexDirection="column"
+											alignItems="flex-start"
+										>
+											<Text fontWeight="fontWeightMedium">
+												Blocking: {blockers.length} item
+												{blockers.length === 1 ? "" : "s"} must be fixed before
+												publishing
+											</Text>
+											{blockers.map((b, i) => (
+												<Text key={`${b.id}-${i}`} fontSize="fontSizeS">
+													{b.href ? (
+														<a href={b.href} target="_blank" rel="noreferrer">
+															{b.label}
+														</a>
+													) : (
+														b.label
+													)}
+													{b.slug ? ` (/${b.slug})` : ""} — {b.message}
+													{b.referrers ? ` (linked from ${b.referrers})` : ""}
+												</Text>
+											))}
+										</Stack>
 									</Note>
+								)}
+								{information.errorCount > 0 && (
+									<Button
+										variant="secondary"
+										size="small"
+										onClick={handleRefresh}
+									>
+										Refresh
+									</Button>
 								)}
 								{information.errorCount === 0 && (
 									<Flex alignItems="flex-start" gap="spacingS" style={{ width: "100%" }}>
@@ -656,7 +714,7 @@ const Sidebar = () => {
 										/>
 									</Flex>
 								)}
-								{publishNeedCount > 0 && information.errorCount === 0 && (
+								{publishNeedCount > 0 && (
 									<Box style={{ width: "100%", fontSize: "0.8em", marginTop: "4px" }}>
 										<Text fontSize="fontSizeS" style={{ width: "100%", display: "block", whiteSpace: "nowrap" }}>
 											{publishNeedCount} item{publishNeedCount === 1 ? "" : "s"} need{publishNeedCount === 1 ? "s" : ""} publishing:
@@ -733,6 +791,51 @@ const Sidebar = () => {
 								Refresh
 							</Button>
 						</Stack>
+					</Box>
+				)}
+
+				{warnings.length > 0 && (
+					<Box padding="spacingS">
+						<Note variant="warning">
+							<Stack
+								spacing="spacingXs"
+								flexDirection="column"
+								alignItems="flex-start"
+							>
+								<Text fontWeight="fontWeightMedium">
+									Warning (does not block publishing)
+								</Text>
+								{warnings.map((w, i) => (
+									<Text key={`${w.kind}-${w.id}-${i}`} fontSize="fontSizeS">
+										<a
+											href={safeEditorLink(w.sys)}
+											target="_blank"
+											rel="noreferrer"
+										>
+											{w.label}
+										</a>
+										{w.slug ? ` (/${w.slug})` : ""} — {w.reason}
+										{w.related && w.related.length > 0 && (
+											<>
+												{": "}
+												{w.related.map((r, j) => (
+													<span key={r.id}>
+														{j > 0 && ", "}
+														<a
+															href={safeEditorLink(r.sys)}
+															target="_blank"
+															rel="noreferrer"
+														>
+															{r.label}
+														</a>
+													</span>
+												))}
+											</>
+										)}
+									</Text>
+								))}
+							</Stack>
+						</Note>
 					</Box>
 				)}
 

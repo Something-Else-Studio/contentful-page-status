@@ -11,11 +11,20 @@ import type {
 } from "contentful-management";
 import type {
 	IAllReferences,
+	IEditorLinkSys,
 	IEntrySysLike,
 	IReferenceInformation,
+	IScanWarning,
 	IUpstreamRootsResult,
 } from "./types";
-import { ROOT_CONTENT_TYPES as DEFAULT_ROOT_CONTENT_TYPES, getLinksFromEntry, getMissingIds } from "./utils";
+import {
+	ROOT_CONTENT_TYPES as DEFAULT_ROOT_CONTENT_TYPES,
+	getEntryLabel,
+	getLinksFromEntry,
+	getMissingIds,
+	getRawSlug,
+	isArchived,
+} from "./utils";
 import { debugLog, debugError } from "./debug";
 
 const REF_CACHE_TTL_MS = 60_000;
@@ -36,6 +45,108 @@ export function clearReferenceCache(entryId?: string): void {
 }
 
 const BATCH_SIZE = 50;
+const MAX_SLUG_QUERIES = 50;
+
+type EntrySdkLike = Pick<SidebarAppSDK, "cma">;
+
+function entrySysForLink(entry: EntryProps<KeyValueMap>): IEditorLinkSys {
+	return {
+		id: entry.sys.id,
+		type: "Entry",
+		space: entry.sys.space,
+		environment: entry.sys.environment,
+	};
+}
+
+/** Link-building sys for entities that could not be fetched (missing/inaccessible). */
+function sysFromIds(sdk: SidebarAppSDK, id: string, type: string): IEditorLinkSys {
+	return {
+		id,
+		type,
+		space: { sys: { id: sdk.ids?.space } },
+		environment: { sys: { id: sdk.ids?.environment } },
+	} as IEditorLinkSys;
+}
+
+function describeRoot(entry: EntryProps<KeyValueMap>) {
+	return {
+		id: entry.sys.id,
+		label: getEntryLabel(entry),
+		slug: getRawSlug(entry),
+		sys: entrySysForLink(entry),
+	};
+}
+
+/**
+ * For each root entry that has a slug, look for other non-archived entries of the same
+ * content type with the same slug. Returns one non-blocking warning per entry that shares
+ * a slug. Lean: one query per distinct (contentType, slug), capped at MAX_SLUG_QUERIES.
+ */
+export async function findDuplicateSlugWarnings(
+	sdk: EntrySdkLike,
+	entries: EntryProps<KeyValueMap>[],
+): Promise<IScanWarning[]> {
+	const warnings: IScanWarning[] = [];
+	const seen = new Set<string>();
+	const candidates: EntryProps<KeyValueMap>[] = [];
+	for (const entry of entries) {
+		if (!getRawSlug(entry) || isArchived(entry) || seen.has(entry.sys.id)) continue;
+		seen.add(entry.sys.id);
+		candidates.push(entry);
+	}
+	const queried = new Map<string, EntryProps<KeyValueMap>[]>();
+	for (const entry of candidates.slice(0, MAX_SLUG_QUERIES)) {
+		const ct = entry.sys.contentType.sys.id;
+		const slug = getRawSlug(entry);
+		const key = `${ct}|${slug}`;
+		try {
+			if (!queried.has(key)) {
+				const res = await sdk.cma.entry.getMany({
+					query: { content_type: ct, "fields.slug": slug, limit: 20 },
+				});
+				queried.set(
+					key,
+					res.items.filter((e) => !isArchived(e)),
+				);
+			}
+			const others = (queried.get(key) ?? []).filter(
+				(e) => e.sys.id !== entry.sys.id,
+			);
+			if (others.length > 0) {
+				const me = describeRoot(entry);
+				warnings.push({
+					kind: "duplicate-slug",
+					...me,
+					reason: `Slug "${slug}" is also used by another ${ct}`,
+					related: others.map(describeRoot),
+				});
+			}
+		} catch (error) {
+			debugError(`Duplicate slug lookup failed for ${slug}`, error);
+		}
+	}
+	return warnings;
+}
+
+function blockingError(
+	sdk: SidebarAppSDK,
+	args: {
+		id: string;
+		type: "Entry" | "Asset";
+		message: string;
+		referrers?: unknown[];
+	},
+) {
+	return {
+		details: {
+			errors: [{ message: args.message }],
+			referrers: args.referrers ?? [],
+			label: `${args.type} ${args.id}`,
+			slug: "",
+		},
+		sys: sysFromIds(sdk, args.id, args.type),
+	} as any;
+}
 
 export async function fetchReferencesIteratively(
 	sdk: SidebarAppSDK,
@@ -52,8 +163,10 @@ export async function fetchReferencesIteratively(
 		entries: [],
 		assets: [],
 		errors: [],
+		warnings: [],
 		processedEntryIds: new Set<string>(),
 	};
+	const slugEntries: EntryProps<KeyValueMap>[] = [];
 
 	const rootContentTypesToUse =
 		rootContentTypes.length > 0 ? rootContentTypes : DEFAULT_ROOT_CONTENT_TYPES;
@@ -63,14 +176,13 @@ export async function fetchReferencesIteratively(
 	const trackedEntryIds = new Set<string>();
 	const trackedAssetIds = new Set<string>();
 
-	const entryReferrers = new Map<
-		string,
-		{ referrerEntryId: string; referrerContentType: string }[]
-	>();
-	const assetReferrers = new Map<
-		string,
-		{ referrerEntryId: string; referrerContentType: string }[]
-	>();
+	type Referrer = {
+		referrerEntryId: string;
+		referrerContentType: string;
+		referrerLabel?: string;
+	};
+	const entryReferrers = new Map<string, Referrer[]>();
+	const assetReferrers = new Map<string, Referrer[]>();
 
 	let processed = 0;
 	let total = 1;
@@ -104,13 +216,14 @@ export async function fetchReferencesIteratively(
 				debugError(
 					`Entry not found: ${id} (referenced from: ${referrerText})`,
 				);
-				allReferences.errors.push({
-					details: {
-						errors: [{ message: `Entry not found or inaccessible` }],
+				allReferences.errors.push(
+					blockingError(sdk, {
+						id,
+						type: "Entry",
+						message: "Entry not found or inaccessible",
 						referrers,
-					},
-					sys: { id: id, type: "Entry" },
-				} as any);
+					}),
+				);
 			});
 
 			const assetIdsToFetch = new Set<string>();
@@ -124,21 +237,33 @@ export async function fetchReferencesIteratively(
 						`Processing [${contentType}] ${entry.sys.id} ("${entry.sys.id}") - Draft: ${isDraft(entry)}, Published: ${isPublished(entry)}, Updated: ${isUpdated(entry)}`,
 					);
 
-					if (rootContentTypesToUse.includes(contentType)) {
+					const isRootType = rootContentTypesToUse.includes(contentType);
+
+					// Archived entries are ignored: never blockers, never "need publishing".
+					if (isArchived(entry)) {
+						if (isRootType) {
+							allReferences.warnings.push({
+								kind: "archived",
+								...describeRoot(entry),
+								reason: `Linked ${contentType} is archived`,
+							});
+						}
+						continue;
+					}
+
+					if (isRootType) {
 						debugLog(
 							`Stopping search at Root: [${contentType}] ${entry.sys.id}`,
 						);
+						// An unpublished linked page/root is a warning, not a blocker.
 						if (!isPublished(entry)) {
-							allReferences.errors.push({
-								details: {
-									errors: [
-										{ message: `Referenced ${contentType} is not published` },
-									],
-									contentType: contentType,
-								},
-								sys: { id: currentEntryId, type: "Entry" },
-							} as any);
+							allReferences.warnings.push({
+								kind: "unpublished",
+								...describeRoot(entry),
+								reason: `Linked ${contentType} is not published`,
+							});
 						}
+						slugEntries.push(entry);
 						continue;
 					}
 
@@ -155,12 +280,16 @@ export async function fetchReferencesIteratively(
 					debugLog(
 						`Processing ROOT ENTRY [${contentType}] ${entry.sys.id}`,
 					);
+					if (rootContentTypesToUse.includes(contentType)) {
+						slugEntries.push(entry);
+					}
 				}
 
 				const links = getLinksFromEntry(entry);
-				const referrer = {
+				const referrer: Referrer = {
 					referrerEntryId: currentEntryId,
 					referrerContentType: contentType,
+					referrerLabel: getEntryLabel(entry),
 				};
 
 				for (const link of links) {
@@ -197,7 +326,9 @@ export async function fetchReferencesIteratively(
 								limit: assetBatch.length,
 							},
 						});
-						allReferences.assets.push(...assetsResponse.items);
+						allReferences.assets.push(
+							...assetsResponse.items.filter((a) => !isArchived(a)),
+						);
 
 						getMissingIds(assetBatch, assetsResponse.items).forEach((id) => {
 							const referrers = assetReferrers.get(id) ?? [];
@@ -213,22 +344,27 @@ export async function fetchReferencesIteratively(
 							debugError(
 								`Missing asset ${id} (referenced from: ${referrerText})`,
 							);
-							allReferences.errors.push({
-								details: { errors: [{ message: `Missing asset ${id}` }], referrers },
-								sys: { id: id, type: "Asset" },
-							} as any);
+							allReferences.errors.push(
+								blockingError(sdk, {
+									id,
+									type: "Asset",
+									message: `Missing asset ${id}`,
+									referrers,
+								}),
+							);
 						});
 					} catch (e) {
 						debugError(`Error fetching asset batch`, e);
 						assetBatch.forEach((id) => {
 							const referrers = assetReferrers.get(id) ?? [];
-							allReferences.errors.push({
-								details: {
-									errors: [{ message: `Error fetching asset ${id}` }],
+							allReferences.errors.push(
+								blockingError(sdk, {
+									id,
+									type: "Asset",
+									message: `Error fetching asset ${id}`,
 									referrers,
-								},
-								sys: { id: id, type: "Asset" },
-							} as any);
+								}),
+							);
 						});
 					}
 				}
@@ -237,17 +373,24 @@ export async function fetchReferencesIteratively(
 			debugError("Batch fetch error", error);
 			batchIds.forEach((id) => {
 				const referrers = entryReferrers.get(id) ?? [];
-				allReferences.errors.push({
-					details: {
-						errors: [{ message: `Error fetching entry batch: ${error}` }],
+				allReferences.errors.push(
+					blockingError(sdk, {
+						id,
+						type: "Entry",
+						message: `Error fetching entry batch: ${error}`,
 						referrers,
-					},
-					sys: { id: id, type: "Entry" },
-				} as any);
+					}),
+				);
 			});
 			processed += batchIds.length;
 			if (setProgress) setProgress({ processed, total });
 		}
+	}
+
+	if (slugEntries.length > 0) {
+		allReferences.warnings.push(
+			...(await findDuplicateSlugWarnings(sdk, slugEntries)),
+		);
 	}
 
 	refInfoCache.set(entryId, { ts: Date.now(), refs: allReferences });
@@ -268,14 +411,14 @@ export function buildReferenceInformation(
 	const errors = allReferences.errors;
 	const errorCount = errors?.length ?? 0;
 
-	const entries = allReferences.entries;
+	const entries = allReferences.entries?.filter((e) => !isArchived(e));
 	const entryCount = entries?.length ?? 0;
 	const draftEntries = entries?.filter(isDraft) ?? [];
 	const updatedEntries = entries?.filter(isUpdated) ?? [];
 	const draftEntryCount = draftEntries.length;
 	const updatedEntryCount = updatedEntries.length;
 
-	const assets = allReferences.assets;
+	const assets = allReferences.assets?.filter((a) => !isArchived(a));
 	const assetCount = assets?.length ?? 0;
 	const draftAssets = assets?.filter(isDraft) ?? [];
 	const draftAssetCount = draftAssets.length;
@@ -308,6 +451,7 @@ export function buildReferenceInformation(
 
 	return {
 		published: isEntryPublished && !isEntryUpdated && !isOutOfDate,
+		warnings: allReferences.warnings ?? [],
 		errors,
 		errorCount,
 		entryCount,
@@ -350,6 +494,8 @@ export async function fetchUpstreamRoots(
 			});
 
 			for (const entry of response.items) {
+				// Archived referrers are ignored ("Used on" and reverse-publish).
+				if (isArchived(entry)) continue;
 				const ctId = entry.sys.contentType.sys.id;
 				if (rootContentTypesToUse.includes(ctId)) {
 					rootEntries.set(entry.sys.id, entry);
@@ -369,5 +515,7 @@ export async function fetchUpstreamRoots(
 		}
 	}
 
-	return { roots: Array.from(rootEntries.values()), failedLookups };
+	const roots = Array.from(rootEntries.values());
+	const warnings = await findDuplicateSlugWarnings(sdk, roots);
+	return { roots, failedLookups, warnings };
 }
