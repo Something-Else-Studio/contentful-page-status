@@ -55,6 +55,21 @@ export function getEntryLabel(entry: EntryProps<KeyValueMap>): string {
 	return "Untitled";
 }
 
+/** True when the entity has been archived in Contentful (CMA sys.archivedVersion / sys.archivedAt). */
+export function isArchived(entity: {
+	sys: { archivedVersion?: number | null; archivedAt?: string | null };
+}): boolean {
+	return entity.sys.archivedVersion != null || !!entity.sys.archivedAt;
+}
+
+/** The entry's real slug field value, or "" when it has none (no label fallback). */
+export function getRawSlug(entry: EntryProps<KeyValueMap>): string {
+	const slugField = entry.fields?.["slug"];
+	if (!slugField) return "";
+	const value = slugField["en-US"] || Object.values(slugField)[0];
+	return typeof value === "string" ? value : "";
+}
+
 export function getEntrySlug(entry: EntryProps<KeyValueMap>): string {
 	const slugField = entry.fields?.["slug"];
 	if (slugField) {

@@ -30,8 +30,21 @@ export interface IEditorLinkSys {
 	environment: { sys: { id: string } };
 }
 
+/** Non-blocking notice shown in the sidebar (never counts as an error, never blocks Publish). */
+export interface IScanWarning {
+	kind: "unpublished" | "archived" | "duplicate-slug";
+	id: string;
+	label: string;
+	slug: string;
+	reason: string;
+	sys: IEditorLinkSys;
+	/** Other entries involved (e.g. the pages sharing a slug). */
+	related?: { id: string; label: string; slug: string; sys: IEditorLinkSys }[];
+}
+
 export interface IReferenceInformation {
 	published: boolean;
+	warnings: IScanWarning[];
 	errors: EntryReferenceError[] | undefined;
 	errorCount: number;
 	entryCount: number;
@@ -56,6 +69,7 @@ export interface IAllReferences {
 	entries: EntryProps<KeyValueMap>[];
 	assets: AssetProps[];
 	errors: EntryReferenceError[];
+	warnings: IScanWarning[];
 	processedEntryIds: Set<string>;
 }
 
@@ -79,6 +93,8 @@ export interface IUpstreamRoot {
 export interface IUpstreamRootsResult {
 	roots: EntryProps<KeyValueMap>[];
 	failedLookups: number;
+	/** Duplicate-slug warnings for the discovered roots (non-blocking). */
+	warnings?: IScanWarning[];
 }
 
 /** Installation parameters for the app (set via ConfigScreen). */

@@ -131,7 +131,10 @@ The app categorizes content as:
 - **Draft**: Never published (new content)
 - **Updated**: Has unpublished changes
 - **Out of date**: Published after the parent (may cause issues)
-- **Errors**: Broken or inaccessible references (open the browser console to see which entry referenced a missing item). Publish-time errors (e.g. VersionMismatch from the Contentful API) are shown in the in-progress Publishing UI with the list of affected items and a recovery Refresh button.
+- **Archived**: Archived entries (and assets) are ignored. They are never blockers, never listed under "need publishing", and never shown in "Used on N pages" or selected for reverse publish.
+- **Errors (blocking)**: Missing or inaccessible references. The red "Blocking" banner names each item (label, slug where known, editor link, and which entry links to it). The "N items need publishing" list still shows below it, but Publish/Schedule are hidden until the blockers are fixed.
+- **Warnings (non-blocking)**: Shown in a yellow note after Refresh, with label, slug, editor link and a short reason. They never block Publish. Warnings appear when (a) a link points at a page/root entry that is unpublished or archived (such roots are no longer a hard blocker; draft/changed components and assets in the tree are still published with the entry), and (b) two non-archived entries of the same root content type share a slug (checked for the current entry, linked roots and "Used on" roots).
+- Publish-time errors (e.g. VersionMismatch from the Contentful API) are shown in the in-progress Publishing UI with the list of affected items and a recovery Refresh button.
 
 ## Development
 
@@ -214,7 +217,8 @@ GitHub Actions (`.github/workflows/deploy.yml`) reads the pnpm version from the 
 
 ## Troubleshooting
 
-**"Blocking: X need publishing" or missing reference?**
+**"Blocking" banner or missing reference?**
+- The banner lists each blocking item with a link. Missing/inaccessible references are the only blockers; unpublished/archived linked pages and duplicate slugs are warnings only.
 - Open the browser DevTools Console; "Entry not found" and "Missing asset" messages include which entry (and content type) referenced the missing item so you can fix the broken link.
 
 **CORS error loading localhost in Contentful (new Mac / Chrome 142+)?**

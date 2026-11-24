@@ -61,6 +61,9 @@ All shared interfaces. Includes `IEntrySysLike` (minimal sys shape accepted by `
 ### `src/lib/references.ts`
 Core fetch logic:
 - `fetchReferencesIteratively()`: Downward BFS — recursively fetches all outgoing dependencies. Results cached for 60 s by entry ID. Cache is explicitly cleared (via exported `clearReferenceCache(entryId)`) on publish completion (in `finishPublishSuccess`) and at the start of every manual `retrieveInformation`/`Refresh` (including the "Refresh to check status" note). This ensures post-publish scans see the true state and prevents VersionMismatch (stale `sys.version` in the entity objects passed to CMA publish) on re-attempts.
+- Archived entities (`sys.archivedVersion` / `sys.archivedAt`, helper `isArchived` in utils) are ignored by the downward scan (not errors, not in draft/updated lists) and by `fetchUpstreamRoots` (dropped from roots, not traversed, so never in "Used on" or reverse-publish).
+- Warnings (`IScanWarning`, non-blocking, never counted in `errorCount`): a linked root that is unpublished (`unpublished`) or archived (`archived`), and `duplicate-slug` from `findDuplicateSlugWarnings()` (one `getMany` per distinct content type + slug via `fields.slug`, ignoring archived matches, capped at 50). Carried on `IAllReferences.warnings` → `IReferenceInformation.warnings`; `fetchUpstreamRoots` returns its own `warnings` for upstream roots.
+- Blocking errors (missing/inaccessible entries and assets, fetch failures) are built by `blockingError()` with `sys` (incl. space/environment for editor links) and `details.label`, `details.slug`, `details.referrers` (each with `referrerLabel`).
 - `buildReferenceInformation()`: Builds `IReferenceInformation` from raw references. Parameter typed as `IEntrySysLike` (no unsafe casts needed).
 - `fetchUpstreamRoots()`: Upward BFS via `links_to_entry` CMA query. Returns all root-type ancestors plus a `failedLookups` count. Caps: Sidebar shows at most `UPSTREAM_ROOT_LIMIT` (50) in the checkbox list (discovery itself walks all); the "Used on" header reflects the total discovered count. No longer performs full per-root downward scans.
 
@@ -69,10 +72,12 @@ Core fetch logic:
 - `doReversePublish()`: Publishes the component first (unless `skipComponentPublish`), then each selected safe upstream root in sequence.
 
 ### `src/lib/utils.ts`
-Pure, SDK-free helpers: `ROOT_CONTENT_TYPES`, `getEntryLabel`, `getEntrySlug`, `getLinksFromEntry`, `getMissingIds`, `getEditorEntry` (typed with `IEditorLinkSys` — no `EntityMetaSysProps` cast).
+Pure, SDK-free helpers: `ROOT_CONTENT_TYPES`, `getEntryLabel`, `getEntrySlug`, `getLinksFromEntry`, `getMissingIds`, `isArchived`, `getRawSlug`, `getEditorEntry` (typed with `IEditorLinkSys` — no `EntityMetaSysProps` cast).
 
 ### `src/locations/Sidebar.tsx`
 React component only (~810 lines). Opens in an **Idle** state — no dependency scan runs until the user clicks **Refresh**. After Refresh, uses two loading phases ("Scanning dependencies…" / "Finding pages that use this…") with distinct progress labels and detail text. For components, upstream discovery is lightweight (just the `links_to_entry` BFS; no per-root deep tree analysis). Shows upstream roots left-aligned with slug labels, per-page checkboxes (plus select-all), truncated-count note (when more than 50 roots exist), and failed-lookup warning. (Badges are present but all treated as selectable.)
+
+When there are blocking errors, the red banner lists every blocker (label, slug, editor link, referrer) and a Refresh button; Publish/Schedule are not rendered. The "N items need publishing" list is still shown. Warnings render in a yellow Note (label, slug, link, reason, related links for duplicate slugs) regardless of publish state and never hide Publish.
 
 When dependencies need publishing (no errors):
 - The action row shows the main Publish (or "Publish + N pages") / Schedule... buttons stacked on the left and a refresh icon-only `IconButton` (with `ArrowClockwiseIcon`) on the right (non-wrapping full-width row).
@@ -135,7 +140,7 @@ Internals for robustness (added to address VersionMismatch + stuck UI after publ
 ### Updating Root Content Types
 
 In `fetchReferencesIteratively()` and `fetchUpstreamRoots()`, the types in `ROOT_CONTENT_TYPES` are treated specially:
-- During downward traversal: recursion stops at them (they are page boundaries). An unpublished root that is referenced becomes a blocking error.
+- During downward traversal: recursion stops at them (they are page boundaries). An unpublished or archived referenced root becomes a non-blocking warning (archived ones are otherwise ignored).
 - During upward discovery (component mode): these are the ancestors that get collected and offered for selective shallow republish.
 
 The list is **now configurable** via the app's installation parameters (set on the ConfigScreen). If a custom `rootContentTypes` array is provided in the installation parameters, it is used; otherwise it falls back to the built-in default list in `src/lib/utils.ts`.
@@ -202,7 +207,7 @@ await sdk.cma.scheduledAction.create({
 ## Error Handling
 
 The app handles several error scenarios:
-- Missing references (shows as errors in UI)
+- Missing references (shows as named blocking errors in UI); unpublished/archived linked pages and duplicate slugs (non-blocking warnings)
 - Publishing failures (e.g. VersionMismatch 409 from stale `sys.version` on CMA publish, or other errors) — caught per-item, shown live in the Publishing progress Note (with list of errored ids + a Refresh recovery button), and the promise always settles so the UI returns to the Idle "Publish complete. Refresh to check status." note (never stuck). Cache is cleared and fresh entity GETs are done immediately before publish to mitigate.
 - API rate limits (should implement retry logic if needed)
 
